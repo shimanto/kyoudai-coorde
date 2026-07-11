@@ -71,7 +71,14 @@
   .card:hover{box-shadow:0 10px 28px rgba(62,50,30,.09);border-color:var(--gold-l)}
   .card.gap{border-color:var(--line)}
   .card-top{display:flex;gap:16px;padding:18px 18px 10px}
-  .thumb{width:124px;height:124px;flex:0 0 124px;border-radius:4px;object-fit:cover;background:var(--out);border:1px solid var(--line)}
+  .thumb-wrap{flex:0 0 124px;display:block}
+  .thumb{width:124px;height:124px;border-radius:4px;object-fit:cover;background:var(--out);border:1px solid var(--line);
+         display:block;transition:.2s}
+  .thumb-wrap:hover .thumb{border-color:var(--gold);box-shadow:0 4px 14px rgba(62,50,30,.14)}
+  .title a{color:inherit;text-decoration:none}
+  .title a:hover{color:var(--gold)}
+  .detail-link{font-size:.66rem;color:var(--gold);text-decoration:none;letter-spacing:.06em;float:right}
+  .detail-link:hover{text-decoration:underline}
   .info{min-width:0;flex:1}
   .badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px}
   .badge{font-size:.58rem;font-weight:600;padding:2px 9px;border-radius:2px;letter-spacing:.1em;
@@ -355,18 +362,21 @@ function tshirtCard(d){
     ? `<div class="gapnote">⚠️ ${d.gaps.join('・')}cm は現在ありません（在庫切れ/展開なし）</div>` : '';
   const price = d.priceMin == null ? '' :
     (d.priceMin === d.priceMax ? fmtYen(d.priceMin) : fmtYen(d.priceMin) + '〜' + fmtYen(d.priceMax));
+  const did = d.id || ((d.products && d.products[0]) || {}).hinban || '';
+  const durl = '/d/' + encodeURIComponent(did);
   return `<div class="card ${d.isFull?'':'gap'}">
     <div class="card-top">
-      <img class="thumb" src="${esc(d.image)}" alt="${esc(d.title)}" loading="lazy" onerror="this.style.visibility='hidden'">
+      <a class="thumb-wrap" href="${durl}" title="サイズ帯・カラー別の在庫一覧を見る">
+        <img class="thumb" src="${esc(d.image)}" alt="${esc(d.title)}" loading="lazy" onerror="this.style.visibility='hidden'"></a>
       <div class="info">
         <div class="badges"><span class="badge ${g.cls}">${g.label}</span>${stockBadge}${sale}${brand}</div>
-        <div class="title">${esc(d.title)}</div>
+        <div class="title"><a href="${durl}">${esc(d.title)}</a></div>
         <div class="price">${price} <small>税込</small></div>
         <div class="colors">🎨 ${d.colors.map(esc).join('・')}</div>
       </div>
     </div>
     <div class="sizes">
-      <div class="sizes-label">サイズ別 在庫（タップで商品ページへ）</div>
+      <div class="sizes-label">サイズ別 在庫（タップで商品ページへ）<a class="detail-link" href="${durl}">カラー別の在庫一覧 →</a></div>
       <div class="size-row">${sizes}</div>
       ${gapnote}
     </div>

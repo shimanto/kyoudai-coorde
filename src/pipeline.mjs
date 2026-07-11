@@ -101,6 +101,20 @@ function parseColors(pathStr) {
   return [...set];
 }
 
+// COLOR-カラー:CODE-表示名 → [{code, name}] (色別画像URLの組み立てに code が必要)
+function parseColorDetails(pathStr) {
+  const seen = new Set();
+  const out = [];
+  const re = /COLOR-カラー:([^\t:]+)-([^\t:]+)/g;
+  let m;
+  while ((m = re.exec(pathStr || '')) !== null) {
+    if (seen.has(m[2])) continue;
+    seen.add(m[2]);
+    out.push({ code: m[1], name: m[2] });
+  }
+  return out;
+}
+
 function toProduct(g) {
   const it = (g.items && g.items[0]) || {};
   const pathStr = it.path || '';
@@ -117,6 +131,7 @@ function toProduct(g) {
     front: parseFrontCategory(pathStr),
     brand: parseBrand(pathStr),
     colors: parseColors(pathStr),
+    colorDetails: parseColorDetails(pathStr),
     saleNote: (it.data1 || '').trim(),      // 例: "値下げしました！"
     stockNum: Number(it.number9) || null,   // number9 は在庫関連の数値 (参考値)
   };
@@ -213,6 +228,7 @@ export function buildTshirtData(products, meta = {}) {
     const imgP = list.find((p) => p.front.code === 'KIDS') || list.find((p) => p.front.code === 'BABY') || list[0];
 
     designs.push({
+      id: list[0].hinban, // 詳細ページURL (/d/<id>) 用。ソート済みなので決定的
       title,
       gender,
       brand: (list.find((p) => p.brand) || {}).brand || '',
@@ -223,7 +239,12 @@ export function buildTshirtData(products, meta = {}) {
       inStockSizes, gaps, isFull, spans,
       sizeMap,
       saleNote: (list.find((p) => p.saleNote) || {}).saleNote || '',
-      products: list.map((p) => ({ hinban: p.hinban, front: p.front.code, url: p.url, sizes: p.sizeCms })),
+      // 帯(品番)ごとの詳細: 詳細ページの代表画像3枚と色×帯マトリクスの材料
+      products: list.map((p) => ({
+        hinban: p.hinban, front: p.front.code, url: p.url, sizes: p.sizeCms,
+        image: p.image, price: p.price,
+        colors: (p.colorDetails || []).length ? p.colorDetails : p.colors.map((name) => ({ code: '', name })),
+      })),
     });
   }
 

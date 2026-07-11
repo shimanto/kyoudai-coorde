@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>アイテム詳細｜西松屋 きょうだいお揃いコーデ</title>
+<meta name="description" content="サイズ帯別（80〜95・100〜130・140〜160cm）の代表画像と、カラー別のサイズ帯在庫一覧。毎朝8時自動更新。">
+<link rel="canonical" href="https://nishimatsuya-coorde.pages.dev/">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👕</text></svg>">
+<script src="/config.js"></script>
+<style>
+  :root{
+    --bg:#f7f4ee; --card:#fffdfa; --ink:#2e2924; --sub:#8f8678; --line:#e5ddcf;
+    --gold:#a98a54; --gold-l:#cdb489; --goldbg:#f3ecdd;
+    --boys:#5f7488; --girls:#b08287; --unisex:#84937a;
+    --ok:#faf6ec; --okline:#d8c69e; --full:#6f7f5c;
+    --out:#efe9de; --outline:#ded5c2; --outink:#b3a893; --sale:#96473f;
+    --serif:'Yu Mincho','Hiragino Mincho ProN','Noto Serif JP','BIZ UDMincho',serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Hiragino Kaku Gothic ProN','Yu Gothic',Meiryo,system-ui,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.7;-webkit-font-smoothing:antialiased}
+  header{background:var(--bg);padding:18px 16px 14px;border-top:4px solid var(--gold);border-bottom:1px solid var(--line)}
+  .hrow{max-width:960px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .back{color:var(--sub);text-decoration:none;font-size:.78rem;letter-spacing:.06em}
+  .back:hover{color:var(--gold)}
+  .brandmark{font-family:var(--serif);letter-spacing:.28em;font-size:.8rem;color:var(--gold);text-indent:.28em}
+  .wrap{max-width:960px;margin:0 auto;padding:26px 14px 70px}
+  .badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .badge{font-size:.6rem;font-weight:600;padding:2px 10px;border-radius:2px;letter-spacing:.1em;background:transparent;border:1px solid}
+  .b-boys{color:var(--boys);border-color:#c3cdd6} .b-girls{color:var(--girls);border-color:#dcc6c8}
+  .b-unisex{color:var(--unisex);border-color:#c8d1c0}
+  .b-full{color:var(--full);border-color:#c2ccb4} .b-gap{color:#b5975a;border-color:#dcc9a3}
+  .b-sale{color:var(--sale);border-color:#d9b3ad}
+  .b-brand{color:var(--sub);border-color:var(--line);background:var(--goldbg)}
+  h1{font-size:1.45rem;font-family:var(--serif);font-weight:600;letter-spacing:.06em;margin:0 0 6px;line-height:1.5}
+  .price{font-size:1.15rem;font-weight:600;color:var(--gold);font-family:var(--serif);letter-spacing:.05em;margin-bottom:4px}
+  .price small{font-size:.66rem;color:var(--sub);font-weight:500}
+  .updated{font-size:.68rem;color:var(--sub);letter-spacing:.04em}
+  h2{font-size:1.02rem;font-family:var(--serif);font-weight:600;letter-spacing:.1em;margin:38px 0 14px;
+     padding-left:12px;border-left:3px solid var(--gold)}
+  /* 帯別 代表画像 */
+  .bands{display:grid;grid-template-columns:1fr;gap:14px}
+  @media(min-width:680px){.bands{grid-template-columns:repeat(3,1fr)}}
+  .band{background:var(--card);border:1px solid var(--line);border-radius:6px;overflow:hidden;display:flex;flex-direction:column;transition:.25s}
+  .band:hover{box-shadow:0 10px 26px rgba(62,50,30,.1);border-color:var(--gold-l)}
+  .band.none{opacity:.55}
+  .band-tag{display:flex;justify-content:space-between;align-items:baseline;padding:10px 14px 8px}
+  .band-no{font-family:var(--serif);color:var(--gold);font-weight:700;font-size:.95rem;letter-spacing:.08em}
+  .band-range{font-size:.66rem;color:var(--sub);letter-spacing:.1em;font-weight:600}
+  .band a.imglink{display:block}
+  .band img{width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--out);display:block;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .band-body{padding:10px 14px 14px;font-size:.72rem;color:var(--sub)}
+  .band-sizes{display:flex;gap:4px;flex-wrap:wrap;margin:4px 0 8px}
+  .sz{border:1px solid var(--okline);background:var(--ok);color:#7c6335;font-weight:700;font-size:.66rem;
+      border-radius:3px;padding:2px 7px}
+  .band-link{display:inline-block;font-size:.68rem;color:var(--gold);text-decoration:none;letter-spacing:.06em;
+     border:1px solid var(--gold-l);border-radius:2px;padding:4px 12px;transition:.2s}
+  .band-link:hover{background:var(--goldbg)}
+  .band .noneMsg{padding:30px 14px;text-align:center;font-size:.72rem;color:var(--outink);font-family:var(--serif);letter-spacing:.1em}
+  /* 色×帯マトリクス */
+  .tblwrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:6px}
+  table{border-collapse:collapse;width:100%;font-size:.78rem;min-width:560px}
+  th,td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:center;vertical-align:middle}
+  th{font-size:.66rem;color:var(--sub);font-weight:600;letter-spacing:.08em;background:var(--goldbg)}
+  th .rng{display:block;font-size:.6rem;font-weight:500;letter-spacing:.04em}
+  tr:last-child td{border-bottom:none}
+  td.color{text-align:left;white-space:nowrap;font-weight:600}
+  .swatch{width:34px;height:34px;border-radius:3px;object-fit:cover;border:1px solid var(--line);
+          vertical-align:middle;margin-right:9px;background:var(--out)}
+  td .on{display:inline-block;width:26px;height:26px;line-height:24px;border-radius:50%;background:var(--ok);
+     border:1px solid var(--okline);color:#7c6335;font-weight:700;text-decoration:none;transition:.15s;font-size:.8rem}
+  td .on:hover{background:var(--gold);border-color:var(--gold);color:#fff}
+  td .off{color:var(--outink)}
+  .cov{font-size:.62rem;font-weight:700;letter-spacing:.06em;border-radius:2px;padding:2px 8px;border:1px solid}
+  .cov.full{color:var(--full);border-color:#c2ccb4;background:#f2f5ec}
+  .cov.pair{color:var(--gold);border-color:var(--gold-l);background:var(--goldbg)}
+  .cov.part{color:var(--outink);border-color:var(--outline)}
+  .note{font-size:.7rem;color:var(--sub);margin-top:12px;line-height:1.8}
+  .aff{display:flex;gap:8px;margin-top:26px;flex-wrap:wrap}
+  .aff a{font-size:.7rem;font-weight:600;text-decoration:none;border-radius:2px;padding:7px 16px;
+    border:1px solid;letter-spacing:.08em;transition:.2s;background:transparent}
+  .aff .rk{color:#a05252;border-color:#dcc0bc} .aff .az{color:#9a7b45;border-color:#dccdac}
+  .aff a:hover{background:var(--goldbg)}
+  .empty{text-align:center;color:var(--sub);padding:80px 0;font-family:var(--serif);letter-spacing:.1em}
+  .empty a{color:var(--gold)}
+  footer{text-align:center;font-size:.7rem;color:#b5aa97;padding:30px 16px 42px;background:#2e2924;margin-top:60px}
+  footer a{color:var(--gold-l);text-decoration:none}
+  .foot-brand{font-family:var(--serif);letter-spacing:.3em;font-size:.8rem;color:#e8dfcf;margin-bottom:10px;text-indent:.3em}
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <a class="back" href="/">← 一覧へ戻る</a>
+    <div class="brandmark">NISHIMATSUYA COORDE</div>
+    <span style="width:86px"></span>
+  </div>
+</header>
+<div class="wrap" id="app"><div class="empty">読み込み中…</div></div>
+<footer>
+  <div class="foot-brand">NISHIMATSUYA COORDE</div>
+  データ出典: <a href="https://www.24028-net.jp/" target="_blank" rel="noopener">西松屋オンラインストア</a>（取得時点の情報。購入前に商品ページでご確認ください）／
+  <a href="/">一覧へ戻る</a> ／ <a href="/docs/">仕様解説</a>
+</footer>
+
+<script>
+const CFG = window.SITE_CONFIG || {affiliate:{}};
+const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const fmtYen = n => '¥' + Number(n).toLocaleString();
+const GENDER = {boys:{cls:'b-boys',label:'男の子'},girls:{cls:'b-girls',label:'女の子'},unisex:{cls:'b-unisex',label:'男女兼用'}};
+const BANDS = [
+  { front:'BABY',   no:'①', label:'ベビー',   range:'80〜95cm'  },
+  { front:'KIDS',   no:'②', label:'キッズ',   range:'100〜130cm'},
+  { front:'SCHOOL', no:'③', label:'スクール', range:'140〜160cm'},
+];
+const IMG_BASE = 'https://www.24028-net.jp/client_info/N24028/itemimage/';
+const colorImg = (hinban, code) => code ? `${IMG_BASE}${hinban}/${String(hinban).slice(2)}-${code}.jpg` : '';
+
+function rakutenLink(q){
+  const t = 'https://search.rakuten.co.jp/search/mall/' + encodeURIComponent(q) + '/';
+  const id = CFG.affiliate && CFG.affiliate.rakutenAffiliateId;
+  return id ? 'https://hb.afl.rakuten.co.jp/hgc/' + encodeURIComponent(id) + '/?pc=' + encodeURIComponent(t) + '&m=' + encodeURIComponent(t) : t;
+}
+const amazonLink = q => 'https://www.amazon.co.jp/s?k=' + encodeURIComponent(q) +
+  ((CFG.affiliate && CFG.affiliate.amazonTag) ? '&tag=' + encodeURIComponent(CFG.affiliate.amazonTag) : '');
+
+function idFromUrl(){
+  const m = location.pathname.match(/\/d\/([0-9A-Za-z_-]+)/);
+  return (m && m[1]) || new URLSearchParams(location.search).get('id') || '';
+}
+
+// 同一帯(front)に複数品番がある場合はまとめる
+function bandData(design, front){
+  const list = design.products.filter(p => p.front === front);
+  if (!list.length) return null;
+  const sizes = [...new Set(list.flatMap(p => p.sizes))].sort((a,b)=>a-b);
+  const colorMap = new Map();
+  for (const p of list) for (const c of (p.colors||[])) {
+    const name = c.name || c; // 旧データ(文字列配列)にも耐える
+    if (!colorMap.has(name)) colorMap.set(name, { name, code: c.code || '', hinban: p.hinban, url: p.url });
+  }
+  return { front, list, sizes, colors: colorMap,
+           image: list[0].image, url: list[0].url, hinban: list[0].hinban, price: list[0].price };
+}
+
+function render(design, generatedAt){
+  const g = GENDER[design.gender] || GENDER.unisex;
+  const bands = BANDS.map(b => ({ ...b, data: bandData(design, b.front) }));
+  const active = bands.filter(b => b.data);
+
+  // 色の集合 (登場順)。各色がどの帯で在庫ありかを引けるように
+  const colorRows = [];
+  const seen = new Map();
+  for (const b of active) for (const [name, c] of b.data.colors) {
+    if (!seen.has(name)) { const row = { name, code: c.code, hinban: c.hinban, bands: {} }; seen.set(name, row); colorRows.push(row); }
+    seen.get(name).bands[b.front] = { url: c.url || b.data.url };
+    if (!seen.get(name).code && c.code) { seen.get(name).code = c.code; seen.get(name).hinban = c.hinban; }
+  }
+
+  const price = design.priceMin == null ? '' :
+    (design.priceMin === design.priceMax ? fmtYen(design.priceMin) : fmtYen(design.priceMin) + '〜' + fmtYen(design.priceMax));
+
+  const bandCards = bands.map(b => {
+    if (!b.data) return `<div class="band none">
+      <div class="band-tag"><span class="band-no">${b.no} ${b.label}</span><span class="band-range">${b.range}</span></div>
+      <div class="noneMsg">現在この帯の<br>展開・在庫はありません</div></div>`;
+    const d = b.data;
+    return `<div class="band">
+      <div class="band-tag"><span class="band-no">${b.no} ${b.label}</span><span class="band-range">${b.range}</span></div>
+      <a class="imglink" href="${esc(d.url)}" target="_blank" rel="noopener" title="西松屋の商品ページへ">
+        <img src="${esc(d.image)}" alt="${esc(design.title)} ${b.label}" loading="lazy" onerror="this.style.visibility='hidden'"></a>
+      <div class="band-body">
+        在庫サイズ <div class="band-sizes">${d.sizes.map(s=>`<span class="sz">${s}</span>`).join('')}</div>
+        ${d.price != null ? `税込 ${fmtYen(d.price)} ／ ` : ''}品番 ${esc(d.hinban)}<br>
+        <a class="band-link" href="${esc(d.url)}" target="_blank" rel="noopener" style="margin-top:7px">商品ページで購入 →</a>
+      </div></div>`;
+  }).join('');
+
+  const activeFronts = active.map(b => b.front);
+  const rows = colorRows.map(row => {
+    const inBands = activeFronts.filter(f => row.bands[f]);
+    const covAll = ['BABY','KIDS','SCHOOL'].every(f => row.bands[f]);
+    const covPair = row.bands.BABY && row.bands.KIDS;
+    const cov = covAll ? '<span class="cov full">◎ 80〜160 そろう</span>'
+      : covPair ? '<span class="cov pair">○ 80〜130 そろう</span>'
+      : `<span class="cov part">${inBands.length}帯のみ</span>`;
+    const sw = colorImg(row.hinban, row.code);
+    const cells = BANDS.map(b => {
+      const hit = row.bands[b.front];
+      if (hit) return `<td><a class="on" href="${esc(hit.url)}" target="_blank" rel="noopener" title="${esc(row.name)} / ${b.label} ${b.range} 在庫あり">●</a></td>`;
+      return `<td><span class="off">–</span></td>`;
+    }).join('');
+    return `<tr>
+      <td class="color">${sw ? `<img class="swatch" src="${esc(sw)}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}${esc(row.name)}</td>
+      ${cells}<td>${cov}</td></tr>`;
+  }).join('');
+
+  document.title = `${design.title}｜サイズ帯・カラー別在庫 — 西松屋きょうだいお揃いコーデ`;
+  const q = '西松屋 ' + design.title;
+  document.getElementById('app').innerHTML = `
+    <div class="badges">
+      <span class="badge ${g.cls}">${g.label}</span>
+      ${design.isFull ? '<span class="badge b-full">80〜130cm 全サイズ在庫</span>' : '<span class="badge b-gap">一部サイズなし</span>'}
+      ${design.saleNote ? `<span class="badge b-sale">${esc(design.saleNote)}</span>` : ''}
+      ${design.brand ? `<span class="badge b-brand">${esc(design.brand)}</span>` : ''}
+    </div>
+    <h1>${esc(design.title)}</h1>
+    <div class="price">${price} <small>税込</small></div>
+    <div class="updated">在庫データ更新: ${esc((generatedAt||'').replace('T',' ').slice(0,16))}（毎朝8時に自動更新）</div>
+
+    <h2>サイズ帯別の展開（画像をタップで商品ページへ）</h2>
+    <div class="bands">${bandCards}</div>
+
+    <h2>カラー別 × サイズ帯 在庫一覧</h2>
+    <div class="tblwrap"><table>
+      <tr><th style="text-align:left">カラー</th>
+        ${BANDS.map(b=>`<th>${b.no} ${b.label}<span class="rng">${b.range}</span></th>`).join('')}
+        <th>80〜160の<br>そろい</th></tr>
+      ${rows || '<tr><td colspan="5" style="color:var(--sub)">カラー情報を取得できませんでした</td></tr>'}
+    </table></div>
+    <p class="note">● = そのカラーがサイズ帯（品番）内に在庫あり。在庫は<b>サイズ帯単位の集計</b>のため、
+    同じ帯の中でも特定サイズ×カラーの組み合わせは売切の場合があります。最終在庫は ● をタップして
+    西松屋の商品ページでご確認ください。「◎ 80〜160 そろう」= 3帯すべてで展開中のカラーです。</p>
+
+    <div class="aff">
+      <a class="rk" href="${esc(rakutenLink(q))}" target="_blank" rel="noopener nofollow sponsored">🅁 楽天で同じ商品を探す</a>
+      <a class="az" href="${esc(amazonLink(q))}" target="_blank" rel="noopener nofollow sponsored">ⓐ Amazonで同じ商品を探す</a>
+    </div>`;
+
+  // JSON-LD
+  const ld = document.createElement('script');
+  ld.type = 'application/ld+json';
+  ld.textContent = JSON.stringify({
+    '@context':'https://schema.org','@type':'Product',
+    name: design.title, image: design.image,
+    brand: {'@type':'Brand', name: design.brand || '西松屋'},
+    offers: {'@type':'AggregateOffer', priceCurrency:'JPY',
+      lowPrice: String(design.priceMin||''), highPrice: String(design.priceMax||design.priceMin||''),
+      availability:'https://schema.org/InStock'},
+  });
+  document.head.appendChild(ld);
+}
+
+(async () => {
+  const id = idFromUrl();
+  const app = document.getElementById('app');
+  try {
+    let data;
+    for (const u of ['/api/data.json', '/data.json']) {
+      try { const r = await fetch(u); if (r.ok) { data = await r.json(); break; } } catch(e){}
+    }
+    if (!data) throw new Error('データを読み込めませんでした');
+    const design = (data.designs||[]).find(d => d.id === id || (d.products||[]).some(p => p.hinban === id));
+    if (!design) {
+      app.innerHTML = `<div class="empty">このアイテムは現在掲載されていません。<br>
+        <small>在庫状況により毎朝の更新で入れ替わります。</small><br><br><a href="/">→ 本日の一覧を見る</a></div>`;
+      return;
+    }
+    render(design, data.generatedAt);
+  } catch (e) {
+    app.innerHTML = `<div class="empty">読み込みエラー: ${esc(e.message)}<br><br><a href="/">→ 一覧へ戻る</a></div>`;
+  }
+})();
+</script>
+</body>
+</html>

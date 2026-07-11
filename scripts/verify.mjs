@@ -12,6 +12,7 @@ const MIME = { '.html': 'text/html', '.json': 'application/json', '.js': 'text/j
 const server = http.createServer((req, res) => {
   let f = decodeURIComponent(req.url.split('?')[0]);
   if (f === '/' || f === '/cheap' || f === '/brands') f = '/index.html';       // _redirects 相当
+  if (f.startsWith('/d/') && !f.endsWith('.json')) f = '/item.html';             // 詳細ページ
   if (f.startsWith('/api/img')) { res.writeHead(404); return res.end(); }       // 画像プロキシは本番のみ
   if (f.startsWith('/api/')) f = f.slice(4);                                    // /api/x.json → 静的 x.json
   const fp = path.join(ROOT, f);
@@ -74,6 +75,15 @@ await page.goto(`http://localhost:${port}/cheap`, { waitUntil: 'networkidle' });
 await page.waitForTimeout(500);
 const directCheap = await page.$eval('#pane-cheap', (e) => e.classList.contains('active'));
 console.log('/cheap 直リンクでcheapタブ表示:', directCheap);
+
+// --- 詳細ページ /d/<id> ---
+const firstId = JSON.parse(fs.readFileSync('public/data.json', 'utf8')).designs[0].id;
+await page.goto(`http://localhost:${port}/d/${firstId}`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(600);
+console.log('詳細ページ タイトル:', await page.$eval('h1', (e) => e.textContent).catch(() => '(なし)'));
+console.log('詳細ページ 帯カード:', await page.$$eval('.band', (c) => c.length),
+  '/ 色行:', await page.$$eval('table tr', (c) => c.length - 1));
+await page.screenshot({ path: 'preview-detail.png', fullPage: false });
 
 console.log('console errors:', errs.length ? errs : 'none');
 await browser.close();
