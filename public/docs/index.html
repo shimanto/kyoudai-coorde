@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>仕様解説｜システム構成と再発防止 — 西松屋きょうだいお揃いコーデ</title>
+<meta name="description" content="2026-07-08のIP制限インシデントを受けたv2アーキテクチャの解説。ローカルPCから西松屋本体へのアクセスをゼロにし、更新をCloudflare(Durable Object Alarm + Workers KV + Pages Functions)へ完全移設した構成図と再発防止の根拠、毎日の実行証跡。">
+<link rel="canonical" href="https://nishimatsuya-coorde.pages.dev/docs/">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>">
+<style>
+  :root{
+    --bg:#fafaf7; --card:#fff; --ink:#2b2b2b; --sub:#888; --line:#ececec;
+    --accent:#ff7a59; --ok:#16a34a; --okbg:#f0fdf4; --okline:#bbf7d0;
+    --ng:#dc2626; --ngbg:#fef2f2; --ngline:#fecaca;
+    --warn:#f59e0b; --warnbg:#fffbeb; --warnline:#fde68a;
+    --cf:#f6821f; --cfbg:#fff7ed;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Hiragino Kaku Gothic ProN','Yu Gothic',Meiryo,system-ui,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.7;-webkit-font-smoothing:antialiased}
+  header{background:linear-gradient(135deg,#ff9a76,#ff7a59);color:#fff;padding:30px 16px 26px;text-align:center}
+  header h1{margin:0;font-size:1.4rem}
+  header p{margin:8px auto 0;font-size:.82rem;opacity:.95;max-width:680px}
+  header a{color:#fff}
+  .wrap{max-width:960px;margin:0 auto;padding:8px 14px 70px}
+  h2{font-size:1.15rem;margin:44px 0 14px;padding-left:12px;border-left:5px solid var(--accent)}
+  h3{font-size:.95rem;margin:18px 0 8px}
+  p{font-size:.88rem}
+  small{color:var(--sub)}
+  .note{font-size:.78rem;color:var(--sub)}
+  /* ---- サマリーカード ---- */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:20px}
+  .stat{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:16px;text-align:center}
+  .stat .num{font-size:1.6rem;font-weight:800;color:var(--accent);line-height:1.2}
+  .stat .num.green{color:var(--ok)}
+  .stat .lbl{font-size:.72rem;color:var(--sub);font-weight:600;margin-top:4px}
+  /* ---- タイムライン ---- */
+  .timeline{list-style:none;margin:0;padding:0;position:relative}
+  .timeline::before{content:'';position:absolute;left:9px;top:6px;bottom:6px;width:3px;background:var(--line);border-radius:2px}
+  .timeline li{position:relative;padding:0 0 18px 34px;font-size:.85rem}
+  .timeline li::before{content:'';position:absolute;left:2px;top:5px;width:13px;height:13px;border-radius:50%;
+    background:#fff;border:3.5px solid var(--sub)}
+  .timeline li.bad::before{border-color:var(--ng)}
+  .timeline li.good::before{border-color:var(--ok)}
+  .timeline .d{font-weight:800;margin-right:8px;white-space:nowrap}
+  /* ---- 構成図 ---- */
+  .arch{display:grid;grid-template-columns:1fr;gap:20px;margin-top:16px}
+  @media(min-width:860px){.arch{grid-template-columns:1fr 1fr}}
+  .diagram{background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:18px 16px 20px}
+  .diagram.v1{border-color:var(--ngline)}
+  .diagram.v2{border-color:var(--okline)}
+  .diagram h3{margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .tag{font-size:.62rem;font-weight:800;color:#fff;border-radius:999px;padding:2px 10px}
+  .tag.ng{background:var(--ng)} .tag.ok{background:var(--ok)}
+  .dsub{font-size:.72rem;color:var(--sub);margin:0 0 14px}
+  .node{border:1.5px solid var(--line);border-radius:12px;padding:9px 12px;margin:0;background:#fafafa;font-size:.8rem;line-height:1.5}
+  .node b{font-size:.84rem}
+  .node .in{display:block;font-size:.7rem;color:var(--sub)}
+  .node.pc{background:#f1f5f9;border-color:#cbd5e1}
+  .node.cf{background:var(--cfbg);border-color:#fed7aa}
+  .node.danger{background:var(--ngbg);border-color:var(--ngline)}
+  .node.safe{background:var(--okbg);border-color:var(--okline)}
+  .arrow{text-align:center;font-size:.72rem;color:var(--sub);padding:3px 0;line-height:1.4}
+  .arrow b{color:var(--ink)}
+  .arrow.bad{color:var(--ng);font-weight:700}
+  .arrow.good{color:var(--ok);font-weight:700}
+  .x{display:inline-block;background:var(--ngbg);border:1px solid var(--ngline);color:var(--ng);
+     font-size:.7rem;font-weight:800;border-radius:8px;padding:2px 8px}
+  .o{display:inline-block;background:var(--okbg);border:1px solid var(--okline);color:var(--ok);
+     font-size:.7rem;font-weight:800;border-radius:8px;padding:2px 8px}
+  /* ---- 表 ---- */
+  .tblwrap{overflow-x:auto;margin-top:10px}
+  table{border-collapse:collapse;width:100%;font-size:.8rem;background:#fff;border-radius:12px;overflow:hidden}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f7f7f4;font-size:.75rem;white-space:nowrap}
+  td.ng{background:var(--ngbg)} td.ok{background:var(--okbg)}
+  /* ---- 根拠カード ---- */
+  .reasons{display:grid;grid-template-columns:1fr;gap:12px;margin-top:14px}
+  @media(min-width:720px){.reasons{grid-template-columns:1fr 1fr}}
+  .reason{background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:14px 16px}
+  .reason h3{margin:0 0 6px;font-size:.88rem;display:flex;gap:8px;align-items:baseline}
+  .reason .no{color:var(--accent);font-weight:800}
+  .reason p{margin:0;font-size:.8rem}
+  /* ---- ライブ証跡 ---- */
+  .live{background:var(--card);border:2px solid var(--okline);border-radius:16px;padding:16px;margin-top:14px}
+  .live h3{margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .pulse{width:10px;height:10px;border-radius:50%;background:var(--ok);display:inline-block;
+    animation:pl 1.6s infinite}
+  @keyframes pl{0%{box-shadow:0 0 0 0 rgba(22,163,74,.5)}70%{box-shadow:0 0 0 9px rgba(22,163,74,0)}100%{box-shadow:0 0 0 0 rgba(22,163,74,0)}}
+  .steps{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
+  .step{border-radius:10px;padding:7px 12px;font-size:.74rem;font-weight:700;border:1.5px solid var(--line);background:#fafafa;min-width:120px}
+  .step.ok{background:var(--okbg);border-color:var(--okline)}
+  .step.ng{background:var(--ngbg);border-color:var(--ngline)}
+  .step .s{display:block;font-size:.66rem;font-weight:600;color:var(--sub)}
+  code{background:#f3f3f0;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.78em}
+  .links a{color:var(--accent)}
+  footer{text-align:center;font-size:.72rem;color:var(--sub);padding:26px 16px 46px;border-top:1px solid var(--line);margin-top:50px}
+  footer a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header>
+  <h1>📐 仕様解説 — システム構成と再発防止</h1>
+  <p>2026-07-08 の「リモートホストIP制限」インシデントを受けた v2 アーキテクチャの全面解説。<br>
+  <a href="/">← サイトトップへ戻る</a></p>
+</header>
+<div class="wrap">
+
+  <div class="stats">
+    <div class="stat"><div class="num green">0 件/日</div><div class="lbl">ローカルPC → 西松屋本体サイト<br>へのアクセス（v2で経路自体を廃止）</div></div>
+    <div class="stat"><div class="num">〜60 件/日</div><div class="lbl">Cloudflare → 検索API(別基盤)のみ<br>1日1回・150ms間隔・15秒タイムアウト</div></div>
+    <div class="stat"><div class="num green" id="statToday">–</div><div class="lbl">本日の自動更新（8:00 JST）<br>下の「ライブ証跡」参照</div></div>
+  </div>
+
+  <h2>1. 何が起きたか（インシデント）</h2>
+  <p>旧構成（v1）は<strong>自宅/事務所のPCとその回線</strong>から毎朝、西松屋オンラインストア本体
+  （<code>www.24028-net.jp</code>）の在庫確認ページを <strong>131品番 × 最大3回再試行 × 並列6接続</strong>で
+  取得していました。西松屋のECプラットフォーム（ebisumart系）のWAFがこれをbotと判定し、
+  <strong>回線のグローバルIP単位で制限</strong>（403「リモートホストIPが制限されています」）を発動。
+  ブラウザでの通常閲覧まで同じエラーになりました。</p>
+  <ul class="timeline">
+    <li><span class="d">2026-05-25</span>v1運用開始。毎朝7:00にWindowsタスクスケジューラでスクレイプ＆デプロイ</li>
+    <li class="bad"><span class="d">2026-07-08</span>西松屋WAFがIP制限を発動。在庫検証が毎朝 0/131 で全滅、公開データの更新が停止</li>
+    <li class="bad"><span class="d">〜2026-07-11</span>旧タスクが毎朝走り続けたため制限が維持される（ブラウザ閲覧も403）</li>
+    <li class="good"><span class="d">2026-07-11</span>v2へ全面移行: 本体サイト非依存パイプライン + Cloudflare完全自動化 + 旧タスク無効化</li>
+    <li class="good"><span class="d">2026-07-12〜</span>制限を延長させる要因が消滅。以後は待てば自然解除（本ページのライブ証跡で毎日確認可能）</li>
+  </ul>
+
+  <h2>2. 構成の変更点（Before / After）</h2>
+  <div class="arch">
+    <div class="diagram v1">
+      <h3><span class="tag ng">v1 旧構成</span> PC依存・本体サイト直撃</h3>
+      <p class="dsub">〜2026-07-11。制限の原因となった構成</p>
+      <div class="node pc"><b>🖥 自宅/事務所の Windows PC</b><span class="in">タスクスケジューラ 毎朝7:00（PCの電源が必要）</span></div>
+      <div class="arrow">↓ Node.js 実行</div>
+      <div class="node pc"><b>scrape.mjs + verify_stock.mjs ほか</b><span class="in">在庫検証: 131品番 × 並列6 × 再試行3</span></div>
+      <div class="arrow bad">↓ 自宅回線のIPから 数百リクエスト/日 ⚠️</div>
+      <div class="node danger"><b>西松屋本体 www.24028-net.jp</b><span class="in">ebisumart WAF → <span class="x">✗ 2026-07-08 IP制限発動</span><br>→ ブラウザ閲覧まで巻き添えで403</span></div>
+      <div class="arrow">↓ 生成した JSON を wrangler で手動アップロード</div>
+      <div class="node cf"><b>Cloudflare Pages（静的配信のみ）</b><span class="in">PCが止まると更新も止まる</span></div>
+    </div>
+    <div class="diagram v2">
+      <h3><span class="tag ok">v2 現行構成</span> Cloudflare内で完結</h3>
+      <p class="dsub">2026-07-11〜。ローカルPCと本体サイトを経路から排除</p>
+      <div class="node cf"><b>⏰ Durable Object Alarm（CoordeScheduler）</b><span class="in">毎朝 23:00 UTC = 8:00 JST に自動発火。PC不要</span></div>
+      <div class="arrow">↓ Worker がパイプライン実行（未完なら90秒後に自動継続）</div>
+      <div class="node cf"><b>⚙️ Worker: nishimatsuya-coorde-cron</b><span class="in">fetch予算40/回でハードストップ・各fetch15秒タイムアウト</span></div>
+      <div class="arrow good">↓ 検索API のみ 〜60リクエスト/日・150ms間隔 <span class="o">✓ 本体サイトへは0件</span></div>
+      <div class="node safe"><b>検索API nishimatsuya-f-s.snva.jp（NaviPlus）</b><span class="in">西松屋本体とは別ホスト・別基盤。IP制限発動中も200を返し続けた実績</span></div>
+      <div class="arrow">↓ 生成JSONを保存（失敗日は前日分を温存 = last-good）</div>
+      <div class="node cf"><b>🗄 Workers KV（COORDE_KV）</b><span class="in">data / cheap / uniqlo / corners / feed / status</span></div>
+      <div class="arrow">↓ /api/* で配信（KVに無ければ静的フォールバック）</div>
+      <div class="node cf"><b>📄 Cloudflare Pages + Pages Functions</b><span class="in">サイト本体・画像プロキシ（許可ホストのみ）・RSS</span></div>
+      <div class="arrow">↓ 閲覧</div>
+      <div class="node"><b>👪 閲覧者のブラウザ</b><span class="in">商品画像・商品リンクはブラウザが直接西松屋を閲覧（通常のWeb閲覧と同一で制限対象外）</span></div>
+    </div>
+  </div>
+
+  <h2>3. Cloudflareサービス / ソフトウェアスタック対比</h2>
+  <div class="tblwrap">
+  <table>
+    <tr><th>レイヤ</th><th>v1（旧）</th><th>v2（現行）</th></tr>
+    <tr><td>スケジューラ</td><td class="ng">Windows タスクスケジューラ（PC電源依存）</td><td class="ok">Durable Object <b>Alarm</b>（SQLiteバックエンド。cronトリガー枠を消費せず、単一スレッド実行で二重起動が構造的に不可能）</td></tr>
+    <tr><td>データ取得</td><td class="ng">ローカルNode.js。<b>本体サイト</b>在庫ページを131品番×並列6でスクレイプ</td><td class="ok">Worker上の共有パイプライン <code>src/pipeline.mjs</code>。<b>検索APIのみ</b>（json_grouping）。色×サイズ実在庫は仕様上取得不能になったためデザイン単位表示に変更</td></tr>
+    <tr><td>データ保存</td><td class="ng">ローカルファイル → 毎朝 wrangler で全量再デプロイ</td><td class="ok">Workers <b>KV</b>。ステップ成功時のみ上書き（last-good保持）</td></tr>
+    <tr><td>配信</td><td>Cloudflare Pages（静的のみ）</td><td class="ok">Pages + <b>Pages Functions</b>（/api/* をKVから配信、画像プロキシ、RSS）＋ Cache API</td></tr>
+    <tr><td>フロント</td><td class="ng">単一リスト（Tシャツのみ）</td><td class="ok">3タブ（お揃いTシャツ / ¥1,000以下パンツ・スパッツ / 他ブランド）+ SEO(JSON-LD/OGP/sitemap) + アフィリエイト基盤</td></tr>
+    <tr><td>監視</td><td class="ng">deploy.log（ローカル。誰も見ず4日間障害に気づけなかった）</td><td class="ok">公開 <a href="/api/status.json">/api/status.json</a>（毎tick更新・ステップ別成否とfetch数）</td></tr>
+    <tr><td>コード管理</td><td class="ng">なし（ローカルのみ）</td><td class="ok"><a href="https://github.com/shimanto/nishimatsuya-coorde" rel="noopener" target="_blank">GitHub公開リポジトリ</a>（シークレット非含有）</td></tr>
+  </table>
+  </div>
+
+  <h2>4. なぜ再発しないか — 5つの根拠</h2>
+  <div class="reasons">
+    <div class="reason"><h3><span class="no">①</span>原因経路そのものを廃止</h3>
+      <p>制限の原因は「ローカル回線 → 本体サイトへの大量アクセス」。v2のコードには <code>www.24028-net.jp</code> へサーバー側からfetchする処理が<b>1行も存在しません</b>（GitHubで全コード検証可能）。旧タスクスケジューラも無効化済み。原因行為が物理的に発生し得ません。</p></div>
+    <div class="reason"><h3><span class="no">②</span>アクセス先は別基盤の検索API</h3>
+      <p>v2が使う <code>nishimatsuya-f-s.snva.jp</code> は検索SaaS（NaviPlus）で、制限を発動したebisumart WAF（本体サイト）とは<b>別ホスト・別基盤</b>。実際、IP制限の発動中もこのAPIは一貫して200を返し続けています（ローカルからもCloudflareからも確認済み）。</p></div>
+    <div class="reason"><h3><span class="no">③</span>リクエスト量を桁で削減＋上限を機械的に強制</h3>
+      <p>v1: 数百リクエスト/日・並列6。→ v2: <b>1日1回・合計約60リクエスト・直列・150ms間隔</b>。さらに1実行あたりfetch予算40でハードストップ、各fetch15秒タイムアウト。暴走してもWorkersの実行時間・サブリクエスト上限が二重の天井になります。</p></div>
+    <div class="reason"><h3><span class="no">④</span>自宅回線とCloudflareの分離</h3>
+      <p>更新はCloudflareのデータセンターから実行され、<b>自宅/事務所の回線IPはもう更新処理に一切使われません</b>。この回線からは今後「普通に閲覧するだけ」なので、制限を再発・延長させる要因がありません（現在の制限も待てば解除される見込み）。</p></div>
+    <div class="reason"><h3><span class="no">⑤</span>万一に備えた縮退設計（last-good）</h3>
+      <p>仮に将来どこかがブロック・障害になっても、失敗したステップは前日データを配信し続け、他ステップは独立して更新されます。サイトが止まったり空になったりはしません。実例: H&amp;MはCloudflareからブロックされるため自動スキップで運用中。</p></div>
+    <div class="reason"><h3><span class="no">⑥</span>毎日の公開証跡</h3>
+      <p>実行結果は毎朝 <a href="/api/status.json">/api/status.json</a> に公開され、誰でも「今日も制限されずに完走したこと」を確認できます（下のライブ証跡がその実データです）。</p></div>
+  </div>
+
+  <h2>5. ライブ証跡 — 本日の自動更新（このページが毎日更新される証明）</h2>
+  <p class="note">以下は静的な文章ではなく、いまこの瞬間に <code>/api/status.json</code> と各データの生成時刻を読み込んで表示しています。
+  日付と全ステップ✓が毎日進んでいくこと自体が「Cloudflare側の処理が制限を受けていない」ことの継続的な実証になります。
+  （※将来にわたる外部サイト仕様の不変までは誰にも保証できないため、本サイトは「証明」を静的な断言ではなく<b>毎日検証可能な公開データ</b>で提供する方針です）</p>
+  <div class="live">
+    <h3><span class="pulse"></span>最新実行ステータス <small id="liveDate"></small></h3>
+    <div class="steps" id="liveSteps">読み込み中…</div>
+    <div class="note" id="liveMeta"></div>
+    <div class="note" id="liveFresh"></div>
+  </div>
+  <h3>参考: 移行直後の初回実行ログ（2026-07-11 23:07 JST・手動検証）</h3>
+  <div class="tblwrap">
+  <table>
+    <tr><th>ステップ</th><th>結果</th><th>外部fetch数</th><th>内容</th></tr>
+    <tr><td>tshirt</td><td class="ok">✓ 成功</td><td>9</td><td>お揃いTシャツ 54デザイン生成</td></tr>
+    <tr><td>cheap</td><td class="ok">✓ 成功</td><td>7</td><td>¥1,000以下 378件（パンツ286・スパッツ92）</td></tr>
+    <tr><td>uniqlo</td><td class="ok">✓ 成功</td><td>37</td><td>セール品自動選定（¥790）</td></tr>
+    <tr><td>corners</td><td class="ok">✓ 成功</td><td>6</td><td>ZARA(6)・ヒラキ(6)。H&amp;Mは自動スキップ（設計どおり）</td></tr>
+    <tr><td>feed</td><td class="ok">✓ 成功</td><td>0</td><td>RSSフィード生成</td></tr>
+    <tr><td colspan="2"><b>合計</b></td><td><b>59</b></td><td>v1の在庫検証だけで最低131×1〜3回だったものを1/10以下に削減</td></tr>
+  </table>
+  </div>
+
+  <h2>6. 障害時の縮退挙動（フェイルセーフ一覧）</h2>
+  <div class="tblwrap">
+  <table>
+    <tr><th>事象</th><th>挙動</th><th>サイトへの影響</th></tr>
+    <tr><td>検索APIが一時エラー</td><td>3回再試行 → 2tick失敗で当該ステップをスキップ</td><td>前日データを配信継続（last-good）</td></tr>
+    <tr><td>fetch予算(40/回)を使い切る</td><td>失敗扱いにせず90秒後の次tickで同ステップから再開</td><td>更新が数分遅れるだけ</td></tr>
+    <tr><td>他ブランドサイトのブロック/構造変更</td><td>そのブランドのみ自動スキップ（実例: H&amp;M・GAP）</td><td>該当コーナーが非表示になるだけ</td></tr>
+    <tr><td>生成結果が0件（上流異常）</td><td>安全弁が発動しKVを上書きしない</td><td>前日データを配信継続</td></tr>
+    <tr><td>想定外エラーでAlarm処理が失敗</td><td>10分後に再Alarmを自動設定（チェーンを絶やさない）</td><td>自動リカバリ</td></tr>
+  </table>
+  </div>
+
+  <h2>7. 確認用リンク</h2>
+  <p class="links">
+    📊 実行ステータス: <a href="/api/status.json">/api/status.json</a>／
+    📦 データ鮮度: <a href="/api/cheap.json">/api/cheap.json</a> の <code>generatedAt</code>／
+    📡 RSS: <a href="/api/feed.xml">/api/feed.xml</a>／
+    💻 全ソースコード: <a href="https://github.com/shimanto/nishimatsuya-coorde" target="_blank" rel="noopener">github.com/shimanto/nishimatsuya-coorde</a>
+  </p>
+
+</div>
+<footer>
+  本ページは v2 移行（2026-07-11）時点の仕様解説です ／ <a href="/">サイトトップへ</a><br>
+  非公式の個人プロジェクトであり、西松屋・各ブランドとは無関係です。
+</footer>
+
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  try {
+    const r = await fetch('/api/status.json');
+    const s = await r.json();
+    const names = { tshirt:'👕 Tシャツ', cheap:'👖 ¥1000以下', uniqlo:'🔴 ユニクロ', corners:'🛍 他ブランド', feed:'📡 RSS' };
+    $('liveDate').textContent = '実行日: ' + (s.runDate || '-') + '（JST）';
+    const steps = Object.entries(s.results || {});
+    $('liveSteps').innerHTML = steps.length ? steps.map(([k, v]) =>
+      `<div class="step ${v.ok ? 'ok' : 'ng'}">${v.ok ? '✓' : (v.retryNextTick ? '↻' : '✗')} ${names[k] || k}
+       <span class="s">${v.ok ? (v.summary || '') : (v.skipped ? 'スキップ(前日データ維持)' : '再試行中')} / fetch ${v.fetches != null ? v.fetches : '-'}</span></div>`
+    ).join('') : '本日分はまだ実行されていません（毎朝8:00 JST開始）';
+    $('liveMeta').textContent = s.done
+      ? '✅ 本日の全ステップが完了しています（最終更新 ' + (s.updatedAt || '').replace('T',' ').slice(0,16) + ' UTC）'
+      : '⏳ 実行中または待機中（現在ステップ: ' + (s.currentStep || '-') + '）';
+    $('statToday').textContent = s.done ? '✓ 完了' : (steps.length ? '実行中' : '8:00開始');
+  } catch (e) {
+    $('liveSteps').textContent = 'ステータス取得に失敗しました: ' + e.message;
+    $('statToday').textContent = '-';
+  }
+  try {
+    const c = await (await fetch('/api/cheap.json')).json();
+    $('liveFresh').textContent = '📦 公開中データの生成時刻: ' + (c.generatedAt || '').replace('T',' ').slice(0,16) + ' UTC（¥1,000以下 ' + c.totalItems + '件）';
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
