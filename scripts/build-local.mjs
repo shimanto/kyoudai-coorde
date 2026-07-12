@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import {
   PATHS, scrapeCategory, buildTshirtData, buildCheapData,
   buildUniqloData, buildCornersData, buildFeedXml,
+  fetchSkuMatrix, applySkuMatrices,
 } from '../src/pipeline.mjs';
 
 const SITE_URL = 'https://nishimatsuya-coorde.pages.dev/';
@@ -23,6 +24,19 @@ try {
   console.log(`Tシャツ: ${r.products.length}品番 (index ${r.indexUpdate})`);
   tshirtData = buildTshirtData(r.products, { indexUpdate: r.indexUpdate });
   console.log(`  → お揃いデザイン ${tshirtData.totalDesigns} (全在庫 ${tshirtData.fullCount})`);
+
+  // 色×サイズのSKU在庫 (詳細ページ用、品番ごとに1リクエスト)
+  const hinbans = [...new Set(tshirtData.designs.flatMap((d) => d.products.map((p) => p.hinban)))];
+  const map = {};
+  let done = 0;
+  for (const h of hinbans) {
+    try { const m = await fetchSkuMatrix(f, h); if (m) map[h] = m; } catch { /* 個別失敗は帯表示にフォールバック */ }
+    done++;
+    if (done % 25 === 0) console.log(`  SKUマトリクス ${done}/${hinbans.length}`);
+    await new Promise((r2) => setTimeout(r2, 80));
+  }
+  const applied = applySkuMatrices(tshirtData, map);
+  console.log(`  SKUマトリクス適用: ${applied}/${hinbans.length}品番`);
   save('data.json', tshirtData);
 } catch (e) { console.error('✘ data.json:', e.message); process.exitCode = 1; }
 

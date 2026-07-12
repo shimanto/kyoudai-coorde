@@ -62,7 +62,8 @@
   .legend{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;font-size:.68rem;color:var(--sub);margin:9px 0 0}
   .legend span{display:inline-flex;align-items:center;gap:5px}
   .lg{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid}
-  .lg-in{background:var(--ok);border-color:var(--okline)} .lg-off{background:var(--bg);border-color:var(--line)}
+  .lg-in{background:var(--ok);border-color:var(--okline)} .lg-out{background:var(--out);border-color:var(--outline)}
+  .lg-off{background:var(--bg);border-color:var(--line)}
   /* ---- Tシャツカード ---- */
   .grid{display:grid;grid-template-columns:1fr;gap:20px}
   @media(min-width:720px){.grid{grid-template-columns:1fr 1fr}}
@@ -100,6 +101,7 @@
   .size-cell.on{background:var(--ok);border-color:var(--okline);color:#7c6335;font-weight:700;
     text-decoration:none;cursor:pointer;transition:.18s}
   .size-cell.on:hover{background:var(--gold);border-color:var(--gold);color:#fff}
+  .size-cell.soldout{background:var(--out);border-color:var(--outline);color:var(--outink)}
   .size-cm{font-size:.7rem;font-weight:700;display:block;line-height:1.15}
   .size-tag{font-size:.54rem;display:block;line-height:1.2;white-space:nowrap}
   @media(min-width:520px){
@@ -203,7 +205,8 @@
       </div>
       <div class="legend">
         <span><i class="lg lg-in"></i>在庫あり（ベ=ベビー/キ=キッズ/ス=スクール）</span>
-        <span><i class="lg lg-off"></i>– 在庫なし/展開なし</span>
+        <span><i class="lg lg-out"></i>売切（展開あり）</span>
+        <span><i class="lg lg-off"></i>– 展開なし</span>
       </div>
       <div class="meta" id="tshirtMeta"></div>
     </div>
@@ -348,7 +351,11 @@ function sizeCell(cm, d){
     return `<a class="size-cell on" href="${esc(s.url)}" target="_blank" rel="noopener" title="${cm}cm 在庫あり（${FRONT[s.front]||''}）">
       <span class="size-cm">${cm}</span><span class="size-tag">${FRONT_S[s.front]||'有'}</span></a>`;
   }
-  return `<div class="size-cell" title="${cm}cm は在庫なし/展開なし"><span class="size-cm">${cm}</span><span class="size-tag">–</span></div>`;
+  if (s.state === 'out') {
+    return `<div class="size-cell soldout" title="${cm}cm は展開ありだが在庫なし（売切）">
+      <span class="size-cm">${cm}</span><span class="size-tag">売切</span></div>`;
+  }
+  return `<div class="size-cell" title="${cm}cm は展開なし"><span class="size-cm">${cm}</span><span class="size-tag">–</span></div>`;
 }
 function tshirtCard(d){
   const g = GENDER[d.gender];
@@ -413,7 +420,7 @@ function cheapCard(it){
         <div class="c-badges"><span class="badge ${g.cls}">${g.label.slice(0,2)}</span><span class="badge b-brand">${kind}</span>${sale}</div>
         <div class="c-name">${esc(it.title)}</div>
         <div class="c-price">${fmtYen(it.price)} <small>税込</small></div>
-        <div class="c-sizes">📏 ${it.sizes.join('/')}cm<br>🎨 ${it.colors.length}色</div>
+        <div class="c-sizes">📏 展開 ${it.sizes.join('/')}cm<br>🎨 ${it.colors.length}色</div>
       </div>
     </a>
     ${affButtons('西松屋 ' + it.title)}

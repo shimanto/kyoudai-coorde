@@ -134,13 +134,15 @@ function idFromUrl(){
 function bandData(design, front){
   const list = design.products.filter(p => p.front === front);
   if (!list.length) return null;
-  const sizes = [...new Set(list.flatMap(p => p.sizes))].sort((a,b)=>a-b);
+  const sizes = [...new Set(list.flatMap(p => p.sizes))].sort((a,b)=>a-b);            // SKU実在庫
+  const offered = [...new Set(list.flatMap(p => p.offered || p.sizes))].sort((a,b)=>a-b); // 展開サイズ
+  const soldOut = offered.filter(s => !sizes.includes(s));
   const colorMap = new Map();
   for (const p of list) for (const c of (p.colors||[])) {
     const name = c.name || c; // 旧データ(文字列配列)にも耐える
     if (!colorMap.has(name)) colorMap.set(name, { name, code: c.code || '', hinban: p.hinban, url: p.url });
   }
-  return { front, list, sizes, colors: colorMap,
+  return { front, list, sizes, offered, soldOut, colors: colorMap,
            image: list[0].image, url: list[0].url, hinban: list[0].hinban, price: list[0].price };
 }
 
@@ -149,13 +151,35 @@ function render(design, generatedAt){
   const bands = BANDS.map(b => ({ ...b, data: bandData(design, b.front) }));
   const active = bands.filter(b => b.data);
 
-  // 色の集合 (登場順)。各色がどの帯で在庫ありかを引けるように
+  // SKU(色×サイズ)データがあれば個別サイズ列で表示、無ければ帯単位にフォールバック
+  const hasSku = active.some(b => b.data.list.some(p => p.colorSizes && Object.keys(p.colorSizes).length));
+
+  // 色の集合 (登場順)。各色がどの帯・どの個別サイズで在庫ありかを引けるように
   const colorRows = [];
   const seen = new Map();
-  for (const b of active) for (const [name, c] of b.data.colors) {
-    if (!seen.has(name)) { const row = { name, code: c.code, hinban: c.hinban, bands: {} }; seen.set(name, row); colorRows.push(row); }
-    seen.get(name).bands[b.front] = { url: c.url || b.data.url };
-    if (!seen.get(name).code && c.code) { seen.get(name).code = c.code; seen.get(name).hinban = c.hinban; }
+  const addRow = (name) => {
+    if (!seen.has(name)) { const row = { name, code: '', hinban: '', bands: {}, sizes: {} }; seen.set(name, row); colorRows.push(row); }
+    return seen.get(name);
+  };
+  for (const b of active) {
+    let bandHasSku = false;
+    for (const p of b.data.list) {
+      for (const [name, v] of Object.entries(p.colorSizes || {})) {
+        bandHasSku = true;
+        const row = addRow(name);
+        row.bands[b.front] = { url: p.url };
+        for (const cm of (v.sizes || [])) if (!row.sizes[cm]) row.sizes[cm] = { url: p.url };
+        if (!row.code && v.code) { row.code = v.code; row.hinban = p.hinban; }
+      }
+    }
+    if (!bandHasSku) {
+      // この帯はSKUデータ無し → path由来の色で帯単位のみ (サイズセルは「?」表示)
+      for (const [name, c] of b.data.colors) {
+        const row = addRow(name);
+        if (!row.bands[b.front]) row.bands[b.front] = { url: c.url || b.data.url, bandOnly: true };
+        if (!row.hinban) { row.hinban = c.hinban; row.code = row.code || c.code; }
+      }
+    }
   }
 
   const price = design.priceMin == null ? '' :
@@ -172,29 +196,65 @@ function render(design, generatedAt){
         <img src="${esc(d.image)}" alt="${esc(design.title)} ${b.label}" loading="lazy" onerror="this.style.visibility='hidden'"></a>
       <div class="band-body">
         在庫サイズ <div class="band-sizes">${d.sizes.map(s=>`<span class="sz">${s}</span>`).join('')}</div>
+        ${d.soldOut && d.soldOut.length ? `<div style="margin:-4px 0 8px;color:var(--outink)">売切: ${d.soldOut.join('・')}cm（展開はあり）</div>` : ''}
         ${d.price != null ? `税込 ${fmtYen(d.price)} ／ ` : ''}品番 ${esc(d.hinban)}<br>
         <a class="band-link" href="${esc(d.url)}" target="_blank" rel="noopener" style="margin-top:7px">商品ページで購入 →</a>
       </div></div>`;
   }).join('');
 
   const activeFronts = active.map(b => b.front);
-  const rows = colorRows.map(row => {
+  const covOf = (row) => {
     const inBands = activeFronts.filter(f => row.bands[f]);
     const covAll = ['BABY','KIDS','SCHOOL'].every(f => row.bands[f]);
     const covPair = row.bands.BABY && row.bands.KIDS;
-    const cov = covAll ? '<span class="cov full">◎ 80〜160 そろう</span>'
+    return covAll ? '<span class="cov full">◎ 80〜160 そろう</span>'
       : covPair ? '<span class="cov pair">○ 80〜130 そろう</span>'
       : `<span class="cov part">${inBands.length}帯のみ</span>`;
+  };
+  const swatchTd = (row) => {
     const sw = colorImg(row.hinban, row.code);
-    const cells = BANDS.map(b => {
-      const hit = row.bands[b.front];
-      if (hit) return `<td><a class="on" href="${esc(hit.url)}" target="_blank" rel="noopener" title="${esc(row.name)} / ${b.label} ${b.range} 在庫あり">●</a></td>`;
-      return `<td><span class="off">–</span></td>`;
+    return `<td class="color">${sw ? `<img class="swatch" src="${esc(sw)}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}${esc(row.name)}</td>`;
+  };
+
+  let tableHtml, noteHtml;
+  if (hasSku) {
+    // ===== 個別サイズ列 (色×サイズのSKU実データ) =====
+    const cols = active.map(b => ({ ...b, sizes: b.data.offered || b.data.sizes })); // 展開サイズを列に(売切列も見せる)
+    const colCount = cols.reduce((s, c) => s + c.sizes.length, 0);
+    const head1 = `<tr><th rowspan="2" style="text-align:left">カラー</th>` +
+      cols.map(c => `<th colspan="${c.sizes.length}">${c.no} ${c.label}<span class="rng">${c.range}</span></th>`).join('') +
+      `<th rowspan="2">80〜160の<br>そろい</th></tr>`;
+    const head2 = `<tr>` + cols.map(c => c.sizes.map(s => `<th>${s}</th>`).join('')).join('') + `</tr>`;
+    const rows = colorRows.map(row => {
+      const cells = cols.map(c => c.sizes.map(s => {
+        const hit = row.sizes[s];
+        if (hit) return `<td><a class="on" href="${esc(hit.url)}" target="_blank" rel="noopener" title="${esc(row.name)} ${s}cm 在庫あり">●</a></td>`;
+        const band = row.bands[c.front];
+        if (band && band.bandOnly) return `<td><span class="off" title="この帯のサイズ別データ未取得">?</span></td>`;
+        return `<td><span class="off">–</span></td>`;
+      }).join('')).join('');
+      return `<tr>${swatchTd(row)}${cells}<td>${covOf(row)}</td></tr>`;
     }).join('');
-    return `<tr>
-      <td class="color">${sw ? `<img class="swatch" src="${esc(sw)}" alt="" loading="lazy" onerror="this.style.display='none'">` : ''}${esc(row.name)}</td>
-      ${cells}<td>${cov}</td></tr>`;
-  }).join('');
+    tableHtml = head1 + head2 + (rows || `<tr><td colspan="${colCount + 2}" style="color:var(--sub)">カラー情報を取得できませんでした</td></tr>`);
+    noteHtml = `● = そのカラー×サイズの組み合わせが在庫あり（西松屋検索データのSKU単位・毎朝8時更新）。
+      – = 在庫なしまたは展開なし。● をタップすると該当サイズ帯の商品ページへ移動します。
+      「◎ 80〜160 そろう」= 3つのサイズ帯すべてで展開中のカラーです。ご購入直前の最終在庫は商品ページでご確認ください。`;
+  } else {
+    // ===== 帯単位フォールバック (旧データ) =====
+    const rows = colorRows.map(row => {
+      const cells = BANDS.map(b => {
+        const hit = row.bands[b.front];
+        if (hit) return `<td><a class="on" href="${esc(hit.url)}" target="_blank" rel="noopener" title="${esc(row.name)} / ${b.label} ${b.range} 在庫あり">●</a></td>`;
+        return `<td><span class="off">–</span></td>`;
+      }).join('');
+      return `<tr>${swatchTd(row)}${cells}<td>${covOf(row)}</td></tr>`;
+    }).join('');
+    tableHtml = `<tr><th style="text-align:left">カラー</th>` +
+      BANDS.map(b=>`<th>${b.no} ${b.label}<span class="rng">${b.range}</span></th>`).join('') +
+      `<th>80〜160の<br>そろい</th></tr>` +
+      (rows || '<tr><td colspan="5" style="color:var(--sub)">カラー情報を取得できませんでした</td></tr>');
+    noteHtml = `● = そのカラーがサイズ帯（品番）内に在庫あり。最終在庫は ● をタップして商品ページでご確認ください。`;
+  }
 
   document.title = `${design.title}｜サイズ帯・カラー別在庫 — 西松屋きょうだいお揃いコーデ`;
   const q = '西松屋 ' + design.title;
@@ -212,16 +272,11 @@ function render(design, generatedAt){
     <h2>サイズ帯別の展開（画像をタップで商品ページへ）</h2>
     <div class="bands">${bandCards}</div>
 
-    <h2>カラー別 × サイズ帯 在庫一覧</h2>
+    <h2>カラー別 × サイズ別 在庫一覧</h2>
     <div class="tblwrap"><table>
-      <tr><th style="text-align:left">カラー</th>
-        ${BANDS.map(b=>`<th>${b.no} ${b.label}<span class="rng">${b.range}</span></th>`).join('')}
-        <th>80〜160の<br>そろい</th></tr>
-      ${rows || '<tr><td colspan="5" style="color:var(--sub)">カラー情報を取得できませんでした</td></tr>'}
+      ${tableHtml}
     </table></div>
-    <p class="note">● = そのカラーがサイズ帯（品番）内に在庫あり。在庫は<b>サイズ帯単位の集計</b>のため、
-    同じ帯の中でも特定サイズ×カラーの組み合わせは売切の場合があります。最終在庫は ● をタップして
-    西松屋の商品ページでご確認ください。「◎ 80〜160 そろう」= 3帯すべてで展開中のカラーです。</p>
+    <p class="note">${noteHtml}</p>
 
     <div class="aff">
       <a class="rk" href="${esc(rakutenLink(q))}" target="_blank" rel="noopener nofollow sponsored">🅁 楽天で同じ商品を探す</a>

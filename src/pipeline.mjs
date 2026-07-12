@@ -159,6 +159,85 @@ export async function scrapeCategory(fetchFn, path, opts = {}) {
   };
 }
 
+// ---------------- SKU(色×サイズ)在庫マトリクス ----------------
+// q=<品番> のキーワード検索は items が SKU 単位で返る:
+//   itemid = <品番>-<サイズコード>-<色コード>, narrow3 = "90cm", narrow5 = "グリーン"
+// n9c=在庫あり なので「返ってきたSKU = 在庫あり」。1品番 = 1リクエスト。
+
+export async function fetchSkuMatrix(fetchFn, hinban) {
+  const qs = new URLSearchParams({
+    fmt: 'json_grouping', glimit: '99', limit: '99', style: '0',
+    n9c: '在庫あり', q: String(hinban),
+  });
+  const res = await fetchFn(NAVI_BASE + '?' + qs.toString(), { headers: NAVI_HEADERS });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const json = await res.json();
+  const groups = (((json.kotohaco || {}).result) || {}).groups || [];
+  const g = groups.find((x) => String(x.value) === String(hinban));
+  if (!g) return null; // 品番が見つからない(完売等)
+  const colors = {}; // 色名 -> { code, sizes:[cm] }
+  for (const it of g.items || []) {
+    const cm = parseFloat(String(it.narrow3 || ''));
+    const color = String(it.narrow5 || '').trim();
+    if (!Number.isFinite(cm) || !color) continue;
+    const idParts = String(it.itemid || '').split('-');
+    const code = idParts.length >= 3 ? idParts[2] : '';
+    const c = colors[color] || (colors[color] = { code, sizes: [] });
+    if (!c.code && code) c.code = code;
+    if (!c.sizes.includes(cm)) c.sizes.push(cm);
+  }
+  for (const c of Object.values(colors)) c.sizes.sort((a, b) => a - b);
+  return colors;
+}
+
+// data.json に SKU 実在庫を反映する。
+// 重要: path ファセット由来のサイズは「展開サイズ」であり在庫ではない
+// (例: 130cm が path にあっても SKU 照会で 0 件 = 売切) ことが判明したため、
+// ここで products[].sizes を SKU 在庫で上書きし、sizeMap / isFull / 並び順を再計算する。
+// これにより「在庫あり / 売切(展開あり) / 展開なし」の3状態が復活する。
+export function applySkuMatrices(tshirtData, matrixByHinban) {
+  let applied = 0;
+  const DISPLAY = tshirtData.displaySizes || DISPLAY_SIZES;
+  for (const d of tshirtData.designs || []) {
+    for (const p of d.products || []) {
+      const m = matrixByHinban[p.hinban];
+      if (m && Object.keys(m).length) {
+        p.colorSizes = m;
+        applied++;
+        p.offered = p.offered || p.sizes; // path由来 = 展開サイズとして保持
+        p.sizes = [...new Set(Object.values(m).flatMap((c) => c.sizes))].sort((a, b) => a - b);
+      }
+    }
+    const sizeMap = {};
+    for (const cm of DISPLAY) {
+      const owner = d.products.find((p) => p.sizes.includes(cm));
+      if (owner) { sizeMap[cm] = { state: 'in', url: owner.url, front: owner.front }; continue; }
+      const offered = d.products.some((p) => (p.offered || p.sizes).includes(cm));
+      sizeMap[cm] = { state: offered ? 'out' : 'off' }; // out=売切(展開あり) / off=展開なし
+    }
+    d.sizeMap = sizeMap;
+    d.inStockSizes = DISPLAY.filter((cm) => sizeMap[cm].state === 'in');
+    d.gaps = CORE_SIZES.filter((cm) => sizeMap[cm].state !== 'in');
+    d.isFull = d.gaps.length === 0;
+    d.spans = BABY_SIZES.some((c) => d.inStockSizes.includes(c)) &&
+              KIDS_SIZES.some((c) => d.inStockSizes.includes(c));
+  }
+  // SKU反映でお揃い不成立になったデザインは除外し、再ソート・再集計
+  tshirtData.designs = (tshirtData.designs || []).filter((d) => d.spans && d.inStockSizes.length);
+  const genderRank = { boys: 0, unisex: 1, girls: 2 };
+  tshirtData.designs.sort((a, b) =>
+    (b.isFull - a.isFull) ||
+    (genderRank[a.gender] - genderRank[b.gender]) ||
+    (b.inStockSizes.length - a.inStockSizes.length) ||
+    a.title.localeCompare(b.title, 'ja'));
+  tshirtData.totalDesigns = tshirtData.designs.length;
+  tshirtData.fullCount = tshirtData.designs.filter((d) => d.isFull).length;
+  tshirtData.gapCount = tshirtData.totalDesigns - tshirtData.fullCount;
+  tshirtData.skuMatrixAt = new Date().toISOString();
+  tshirtData.stockSource = 'sku';
+  return applied;
+}
+
 // ---------------- Tシャツ「きょうだいお揃い」データ ----------------
 
 const DISPLAY_SIZES = [70, 80, 90, 95, 100, 110, 120, 130, 140, 150];

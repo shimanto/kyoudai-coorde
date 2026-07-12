@@ -23,6 +23,7 @@
 import {
   PATHS, scrapeCategory, buildTshirtData, buildCheapData,
   buildUniqloData, buildCornersData, buildFeedXml,
+  fetchSkuMatrix, applySkuMatrices,
 } from '../src/pipeline.mjs';
 
 const SITE_URL = 'https://nishimatsuya-coorde.pages.dev/';
@@ -40,6 +41,41 @@ const STEPS = [
       const data = buildTshirtData(r.products, { indexUpdate: r.indexUpdate });
       await env.COORDE_KV.put('data.json', JSON.stringify(data));
       return `designs=${data.totalDesigns}`;
+    },
+  },
+  {
+    // 色×サイズのSKU在庫 (詳細ページ用)。品番ごとに1リクエスト(約115件)なので
+    // 進捗を KV に保存しながら複数 tick に分けて実行する (BudgetExceeded で中断→再開)。
+    name: 'skumatrix', est: 15,
+    run: async (f, env) => {
+      const raw = await env.COORDE_KV.get('data.json');
+      if (!raw) throw new Error('data.json がまだ無いため skumatrix をスキップ');
+      const data = JSON.parse(raw);
+      const hinbans = [...new Set((data.designs || []).flatMap((d) => (d.products || []).map((p) => p.hinban)))];
+      let prog = null;
+      try { prog = JSON.parse(await env.COORDE_KV.get('tmp:sku') || 'null'); } catch { /* 壊れていたら最初から */ }
+      if (!prog || prog.runDate !== data.generatedAt) prog = { runDate: data.generatedAt, i: 0, map: {} };
+      try {
+        while (prog.i < hinbans.length) {
+          const h = hinbans[prog.i];
+          try {
+            const m = await fetchSkuMatrix(f, h);
+            if (m) prog.map[h] = m;
+          } catch (e) {
+            if (e && e.budget) throw e; // 予算切れは上へ (進捗は finally 側で保存)
+            // 個別失敗はスキップ (この品番だけ帯単位表示にフォールバック)
+          }
+          prog.i++;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      } catch (e) {
+        if (e && e.budget) { await env.COORDE_KV.put('tmp:sku', JSON.stringify(prog)); }
+        throw e;
+      }
+      const applied = applySkuMatrices(data, prog.map);
+      await env.COORDE_KV.put('data.json', JSON.stringify(data));
+      await env.COORDE_KV.delete('tmp:sku');
+      return `sku matrix ${applied}/${hinbans.length}品番`;
     },
   },
   {
