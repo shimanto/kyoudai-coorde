@@ -240,7 +240,7 @@ export function applySkuMatrices(tshirtData, matrixByHinban) {
 
 // ---------------- Tシャツ「きょうだいお揃い」データ ----------------
 
-const DISPLAY_SIZES = [70, 80, 90, 95, 100, 110, 120, 130, 140, 150];
+const DISPLAY_SIZES = [80, 90, 95, 100, 110, 120, 130, 140, 150, 160]; // 70は表示しない・160まで
 const BABY_SIZES = [80, 90, 95];
 const KIDS_SIZES = [100, 110, 120, 130];
 const CORE_SIZES = [80, 90, 95, 100, 110, 120, 130];
@@ -389,7 +389,12 @@ export function buildCheapData(pantsResult, leggingsResult) {
   if (items.length === 0) {
     throw new Error('¥1000以下アイテムが0件 — 上流データ異常の可能性があるため出力しません');
   }
-  items.sort((a, b) => (a.price - b.price) || a.title.localeCompare(b.title, 'ja'));
+  // 10分丈レギンスを最優先で表示、以降は安い順
+  const prio = (i) => (i.kind === 'spats' && /10分丈/.test(i.title) ? 0 : 1);
+  items.sort((a, b) =>
+    (prio(a) - prio(b)) ||
+    (a.price - b.price) ||
+    a.title.localeCompare(b.title, 'ja'));
 
   const sizeSet = new Set(items.flatMap((i) => i.sizes));
   return {
@@ -655,7 +660,7 @@ export function buildFeedXml(tshirtData, cheapData, siteUrl) {
   const items = [];
 
   for (const it of (cheapData && cheapData.items || []).slice(0, 20)) {
-    const kindLabel = it.kind === 'spats' ? 'スパッツ・レギンス' : 'パンツ';
+    const kindLabel = it.kind === 'spats' ? 'レギンス' : 'パンツ';
     items.push(`  <item>
     <title>${esc(`【¥${it.price}】${it.title}（${kindLabel} / ${it.sizes.join('・')}cm）`)}</title>
     <link>${esc(it.url)}</link>
@@ -677,9 +682,9 @@ export function buildFeedXml(tshirtData, cheapData, siteUrl) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
 <channel>
-  <title>西松屋 きょうだいお揃いコーデ &amp; ¥1,000以下パンツ・スパッツ</title>
+  <title>西松屋 きょうだいお揃いコーデ &amp; ¥1,000以下パンツ・レギンス</title>
   <link>${esc(siteUrl)}</link>
-  <description>西松屋オンラインの在庫から毎朝8時に自動更新。80〜140cmお揃いTシャツと¥1,000以下の激安パンツ・スパッツ。</description>
+  <description>西松屋オンラインの在庫から毎朝8時に自動更新。80〜160cmお揃いTシャツと¥1,000以下の激安パンツ・レギンス。</description>
   <language>ja</language>
   <lastBuildDate>${now}</lastBuildDate>
 ${items.join('\n')}

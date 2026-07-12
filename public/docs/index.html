@@ -164,7 +164,7 @@
     <tr><td>データ取得</td><td class="ng">ローカルNode.js。<b>本体サイト</b>在庫ページを131品番×並列6でスクレイプ</td><td class="ok">Worker上の共有パイプライン <code>src/pipeline.mjs</code>。<b>検索APIのみ</b>（json_grouping）。色×サイズ実在庫は仕様上取得不能になったためデザイン単位表示に変更</td></tr>
     <tr><td>データ保存</td><td class="ng">ローカルファイル → 毎朝 wrangler で全量再デプロイ</td><td class="ok">Workers <b>KV</b>。ステップ成功時のみ上書き（last-good保持）</td></tr>
     <tr><td>配信</td><td>Cloudflare Pages（静的のみ）</td><td class="ok">Pages + <b>Pages Functions</b>（/api/* をKVから配信、画像プロキシ、RSS）＋ Cache API</td></tr>
-    <tr><td>フロント</td><td class="ng">単一リスト（Tシャツのみ）</td><td class="ok">3タブ（お揃いTシャツ / ¥1,000以下パンツ・スパッツ / 他ブランド）+ SEO(JSON-LD/OGP/sitemap) + アフィリエイト基盤</td></tr>
+    <tr><td>フロント</td><td class="ng">単一リスト（Tシャツのみ）</td><td class="ok">3タブ（お揃いTシャツ / ¥1,000以下パンツ・レギンス / 他ブランド）+ SEO(JSON-LD/OGP/sitemap) + アフィリエイト基盤</td></tr>
     <tr><td>監視</td><td class="ng">deploy.log（ローカル。誰も見ず4日間障害に気づけなかった）</td><td class="ok">公開 <a href="/api/status.json">/api/status.json</a>（毎tick更新・ステップ別成否とfetch数）</td></tr>
     <tr><td>コード管理</td><td class="ng">なし（ローカルのみ）</td><td class="ok"><a href="https://github.com/shimanto/nishimatsuya-coorde" rel="noopener" target="_blank">GitHub公開リポジトリ</a>（シークレット非含有）</td></tr>
   </table>
@@ -201,7 +201,7 @@
   <table>
     <tr><th>ステップ</th><th>結果</th><th>外部fetch数</th><th>内容</th></tr>
     <tr><td>tshirt</td><td class="ok">✓ 成功</td><td>9</td><td>お揃いTシャツ 54デザイン生成</td></tr>
-    <tr><td>cheap</td><td class="ok">✓ 成功</td><td>7</td><td>¥1,000以下 378件（パンツ286・スパッツ92）</td></tr>
+    <tr><td>cheap</td><td class="ok">✓ 成功</td><td>7</td><td>¥1,000以下 378件（パンツ286・レギンス92）</td></tr>
     <tr><td>uniqlo</td><td class="ok">✓ 成功</td><td>37</td><td>セール品自動選定（¥790）</td></tr>
     <tr><td>corners</td><td class="ok">✓ 成功</td><td>6</td><td>ZARA(6)・ヒラキ(6)。H&amp;Mは自動スキップ（設計どおり）</td></tr>
     <tr><td>feed</td><td class="ok">✓ 成功</td><td>0</td><td>RSSフィード生成</td></tr>
