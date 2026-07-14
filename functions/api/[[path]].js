@@ -14,6 +14,7 @@ const IMG_HOSTS = new Set([
   'www.hiraki.co.jp',
   'www.gap.co.jp',
   'im.uniqlo.com', 'image.uniqlo.com', 'www.uniqlo.com',
+  'item-shopping.c.yimg.jp', 'shopping.c.yimg.jp', // ZOZOTOWN Yahoo!店の商品画像
   'www.24028-net.jp',
 ]);
 

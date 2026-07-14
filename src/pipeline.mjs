@@ -673,9 +673,53 @@ async function fetchGAP(fetchFn) {
   return items;
 }
 
+// ZOZOTOWN: 本体 zozo.jp は Akamai Bot Manager で機械アクセスを明示拒否 (2026-07-14実測:
+// カテゴリページはローカルからも403) のため直接は取得しない。公式出店の
+// ZOZOTOWN Yahoo!店 (store.shopping.yahoo.co.jp/zozo/) をキーワード検索して値下げ品を拾う。
+// robots.txt で禁止されているのは strcid/brandid/spec 等のパラメータ付き検索のみで、
+// ?p= のキーワード検索は許可されている (2026-07-14確認)。
+async function fetchZozoYahoo(fetchFn) {
+  const u = 'https://store.shopping.yahoo.co.jp/zozo/search.html?p=' + encodeURIComponent('キッズ Tシャツ');
+  const t = await (await fetchFn(u, { headers: H_HTML })).text();
+  const m = t.match(/<script id="__NEXT_DATA__" type="application\/json"[^>]*>([\s\S]*?)<\/script>/);
+  if (!m) throw new Error('no __NEXT_DATA__');
+  const j = JSON.parse(m[1]);
+  let arr = null;
+  (function walk(o, d) {
+    if (arr || !o || typeof o !== 'object' || d > 9) return;
+    if (Array.isArray(o) && o.length > 3 && o[0] && typeof o[0] === 'object' && 'name' in o[0] && 'price' in o[0]) { arr = o; return; }
+    for (const k of Object.keys(o)) walk(o[k], d + 1);
+  })(j.props, 0);
+  if (!arr) throw new Error('no item array in NEXT_DATA');
+  const items = [];
+  for (const it of arr) {
+    const price = yen(it.actualPrice || it.price);
+    const img = it.image && it.image.imageUrl;
+    const name = String(it.name || '').trim();
+    if (!price || !img || !name) continue;
+    const ob = String(it.dataBeacon || '').match(/o_prc:(\d+)/); // 値下げ前価格はbeaconのみに載る
+    const oldPrice = ob && Number(ob[1]) > price ? Number(ob[1]) : null;
+    items.push({
+      name, price, oldPrice,
+      saleLabel: it.discountRate > 0 ? `${it.discountRate}% OFF` : 'ZOZO Yahoo!店',
+      image: img,
+      url: String(it.url || '').split('?')[0],
+      sizes: '100〜130cm中心',
+      gender: genderFromText(name),
+    });
+  }
+  const sale = items.filter((i) => i.oldPrice);
+  let pool = sale.length >= CORNER_TAKE ? sale : items;
+  const seen = new Set();
+  pool = pool.filter((i) => !seen.has(i.name) && seen.add(i.name)); // 色違いの同名重複を除去
+  pool.sort((a, b) => a.price - b.price);
+  return pool.slice(0, CORNER_TAKE);
+}
+
 const RETAILERS = [
   { brand: 'H&M', accent: '#e50010', note: 'キッズ(2〜8歳)セールより値下げTシャツ', fn: fetchHM },
   { brand: 'ZARA', accent: '#000000', note: 'キッズ Tシャツ スペシャルプライス', fn: fetchZARA },
+  { brand: 'ZOZOTOWN', accent: '#1d1d1b', note: 'ZOZOTOWN Yahoo!店の値下げキッズTシャツ（100〜130cm中心・きょうだいサイズが見つけやすい）', fn: fetchZozoYahoo },
   { brand: 'ヒラキ', accent: '#e6322e', note: '激安キッズTシャツ（100〜160cm中心）', fn: fetchHiraki },
   { brand: 'GAP', accent: '#1a3d7c', note: 'ボーイズ セール（価格は商品ページでご確認ください）', fn: fetchGAP },
 ];
