@@ -185,7 +185,7 @@
   </div>
   <nav class="tabs" id="tabs" aria-label="コンテンツ切替">
     <button data-tab="tshirt" class="active">お揃いTシャツ<small>MATCHING ／ 80–160cm</small></button>
-    <button data-tab="cheap">パンツ・レギンス<small>UNDER ¥1,000</small></button>
+    <button data-tab="cheap">パンツ・レギンス<small>MATCHING ／ UNDER ¥1,000</small></button>
     <button data-tab="brands">他ブランド<small>SELECT SALE</small></button>
   </nav>
 </header>
@@ -213,11 +213,12 @@
     <div class="grid" id="tshirtGrid"><div class="empty">読み込み中…</div></div>
   </section>
 
-  <!-- ============ タブ2: ¥1,000以下 パンツ・スパッツ ============ -->
+  <!-- ============ タブ2: お揃いパンツ・レギンス ＋ ¥1,000以下 ============ -->
   <section class="tabpane" id="pane-cheap">
     <div class="toolbar">
       <div class="filters" id="cheapKind">
         <button data-k="all" class="active">すべて</button>
+        <button data-k="len10">🦵 10分丈</button>
         <button data-k="pants">👖 パンツ</button>
         <button data-k="spats">🩳 レギンス</button>
       </div>
@@ -228,8 +229,16 @@
         <button data-g="girls">👧</button>
         <select id="cheapSize"><option value="">サイズ指定なし</option></select>
       </div>
+      <div class="legend">
+        <span><i class="lg lg-in"></i>在庫あり（ベ=ベビー/キ=キッズ/ス=スクール）</span>
+        <span><i class="lg lg-out"></i>売切（展開あり）</span>
+        <span><i class="lg lg-off"></i>– 展開なし</span>
+      </div>
       <div class="meta" id="cheapMeta"></div>
     </div>
+    <div class="section-head">お揃いパンツ・レギンス <span class="sub" id="bottomsMeta">80〜160cmを同じデザインで（10分丈優先）</span></div>
+    <div class="grid" id="bottomsGrid"><div class="empty">読み込み中…</div></div>
+    <div class="section-head" style="margin-top:36px">税込¥1,000以下 一覧 <span class="sub">10分丈レギンス優先・安い順</span></div>
     <div class="cheap-grid" id="cheapGrid"><div class="empty">読み込み中…</div></div>
   </section>
 
@@ -267,6 +276,9 @@ const FRONT_S = {BABY:'ベ',KIDS:'キ',SCHOOL:'ス'};
 const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const fmtYen = n => '¥' + Number(n).toLocaleString();
 const fmtDate = s => (s||'').replace('T',' ').slice(0,16);
+// 西松屋画像は /img/ (R2 read-throughミラー) 経由 — 訪問者のIPを原本サーバーに触れさせない
+const NISHI_IMG = 'https://www.24028-net.jp/client_info/N24028/itemimage/';
+const nishiImg = u => u && u.startsWith(NISHI_IMG) ? '/img/' + u.slice(NISHI_IMG.length) : u;
 
 // ---- データ読込: /api/ (KV最新) → 静的ファイル の順でフォールバック ----
 async function loadJson(name){
@@ -303,8 +315,8 @@ const TAB_PATH = {tshirt:'/', cheap:'/cheap', brands:'/brands'};
 const TAB_SEO = {
   tshirt: {title:'西松屋 きょうだいお揃いコーデ｜80〜160cm同デザインTシャツ',
            desc:'西松屋オンラインの在庫から毎朝8時自動更新。ベビー〜ジュニア(80〜160cm)を同じデザインで揃えられるTシャツを在庫サイズ付きで一覧。'},
-  cheap:  {title:'西松屋 税込¥1,000以下のパンツ・レギンス一覧｜毎朝8時更新',
-           desc:'西松屋オンラインで今買える税込¥1,000以下のパンツ・レギンスを安い順に一覧(10分丈レギンス優先)。在庫サイズ・性別で絞り込み可能。毎朝8時自動更新。'},
+  cheap:  {title:'西松屋 お揃いパンツ・レギンス(80〜160cm)＆税込¥1,000以下一覧｜毎朝8時更新',
+           desc:'西松屋のパンツ・レギンスを80〜160cmの同デザインお揃いで一覧(10分丈優先)。税込¥1,000以下の激安ボトムスも安い順に掲載。在庫サイズ・性別で絞り込み可能。毎朝8時自動更新。'},
   brands: {title:'キッズ服セール横断チェック｜ユニクロ・H&M・ZARA・ヒラキ・GAP',
            desc:'ユニクロ・H&M・ZARA・ヒラキ・GAPのキッズTシャツセールを毎朝自動巡回。西松屋との価格比較に。'},
 };
@@ -357,14 +369,15 @@ function sizeCell(cm, d){
   }
   return `<div class="size-cell" title="${cm}cm は展開なし"><span class="size-cm">${cm}</span><span class="size-tag">–</span></div>`;
 }
-function tshirtCard(d){
+// Tシャツ・お揃いボトムス共通のデザインカード (DATA = TDATA または BDATA)
+function designCard(d, DATA){
   const g = GENDER[d.gender];
   const brand = d.brand ? `<span class="badge b-brand">${esc(d.brand)}</span>` : '';
   const sale = d.saleNote ? `<span class="badge b-sale">🏷 ${esc(d.saleNote)}</span>` : '';
   const stockBadge = d.isFull
     ? '<span class="badge b-full">✅ 80〜130cm全在庫</span>'
     : '<span class="badge b-gap">⚠️ 一部サイズなし</span>';
-  const sizes = TDATA.displaySizes.map(cm => sizeCell(cm, d)).join('');
+  const sizes = DATA.displaySizes.map(cm => sizeCell(cm, d)).join('');
   const gapnote = d.gaps && d.gaps.length
     ? `<div class="gapnote">⚠️ ${d.gaps.join('・')}cm は現在ありません（在庫切れ/展開なし）</div>` : '';
   const price = d.priceMin == null ? '' :
@@ -374,7 +387,7 @@ function tshirtCard(d){
   return `<div class="card ${d.isFull?'':'gap'}">
     <div class="card-top">
       <a class="thumb-wrap" href="${durl}" title="サイズ帯・カラー別の在庫一覧を見る">
-        <img class="thumb" src="${esc(d.image)}" alt="${esc(d.title)}" loading="lazy" onerror="this.style.visibility='hidden'"></a>
+        <img class="thumb" src="${esc(nishiImg(d.image))}" alt="${esc(d.title)}" loading="lazy" onerror="this.style.visibility='hidden'"></a>
       <div class="info">
         <div class="badges"><span class="badge ${g.cls}">${g.label}</span>${stockBadge}${sale}${brand}</div>
         <div class="title"><a href="${durl}">${esc(d.title)}</a></div>
@@ -395,7 +408,7 @@ function renderTshirt(){
   const grid = document.getElementById('tshirtGrid');
   let list = TDATA.designs.filter(d => tFilter === 'all' || d.gender === tFilter);
   if (fullOnly) list = list.filter(d => d.isFull);
-  grid.innerHTML = list.length ? list.map(tshirtCard).join('') : '<div class="empty">該当するデザインがありません</div>';
+  grid.innerHTML = list.length ? list.map(d => designCard(d, TDATA)).join('') : '<div class="empty">該当するデザインがありません</div>';
   document.getElementById('tshirtMeta').textContent =
     `${list.length}デザイン表示中 ／ 全${TDATA.totalDesigns}（✅全在庫 ${TDATA.fullCount}・⚠️一部なし ${TDATA.gapCount}）・更新: ${fmtDate(TDATA.generatedAt)}`;
 }
@@ -407,15 +420,44 @@ document.getElementById('tshirtFilters').addEventListener('click', e => {
 });
 document.getElementById('fullOnly').addEventListener('change', e => { fullOnly = e.target.checked; renderTshirt(); });
 
-// ============ タブ2: ¥1,000以下 ============
-let CDATA = null, cKind = 'all', cGender = 'all', cSize = '';
+// ============ タブ2: お揃いパンツ・レギンス ＋ ¥1,000以下 ============
+let CDATA = null, BDATA = null, cKind = 'all', cGender = 'all', cSize = '';
+const isLen10 = t => /10分丈/.test(t || '');
+
+// お揃いボトムス (Tシャツと同じカード。画像クリックで /d/<品番> → 3帯画像)
+function renderBottoms(){
+  if (!BDATA) return;
+  let list = BDATA.designs;
+  if (cKind === 'len10') list = list.filter(d => isLen10(d.title));
+  else if (cKind !== 'all') list = list.filter(d => d.kind === cKind);
+  if (cGender !== 'all') list = list.filter(d => d.gender === cGender);
+  if (cSize) list = list.filter(d => d.inStockSizes.includes(Number(cSize)));
+  document.getElementById('bottomsGrid').innerHTML = list.length
+    ? list.map(d => designCard(d, BDATA)).join('')
+    : '<div class="empty">該当するお揃いデザインがありません</div>';
+  document.getElementById('bottomsMeta').textContent =
+    `80〜160cmを同じデザインで（10分丈優先） — ${list.length}デザイン表示中／全${BDATA.totalDesigns}`;
+}
+
+// サイズ絞り込みの選択肢は ¥1,000以下 と お揃いボトムス の在庫サイズの和集合
+function refreshSizeOptions(){
+  const sel = document.getElementById('cheapSize');
+  const cur = sel.value;
+  const set = new Set();
+  if (CDATA) for (const cm of CDATA.availableSizes) set.add(cm);
+  if (BDATA) for (const d of BDATA.designs) for (const cm of d.inStockSizes) set.add(cm);
+  sel.innerHTML = '<option value="">サイズ指定なし</option>' +
+    [...set].sort((a,b)=>a-b).map(cm => `<option value="${cm}">${cm}cm</option>`).join('');
+  sel.value = cur;
+  if (sel.value !== cur) { sel.value = ''; cSize = ''; }
+}
 function cheapCard(it){
   const g = GENDER[it.gender];
   const kind = it.kind === 'spats' ? '🩳 レギンス' : '👖 パンツ';
   const sale = it.saleNote ? `<span class="badge b-sale">🏷 ${esc(it.saleNote)}</span>` : '';
   return `<div class="c-card">
     <a href="${esc(it.url)}" target="_blank" rel="noopener">
-      <img class="c-img" src="${esc(it.image)}" alt="${esc(it.title)}" loading="lazy" onerror="this.style.visibility='hidden'">
+      <img class="c-img" src="${esc(nishiImg(it.image))}" alt="${esc(it.title)}" loading="lazy" onerror="this.style.visibility='hidden'">
       <div class="c-body">
         <div class="c-badges"><span class="badge ${g.cls}">${g.label.slice(0,2)}</span><span class="badge b-brand">${kind}</span>${sale}</div>
         <div class="c-name">${esc(it.title)}</div>
@@ -429,7 +471,8 @@ function cheapCard(it){
 function renderCheap(){
   if (!CDATA) return;
   let list = CDATA.items;
-  if (cKind !== 'all') list = list.filter(i => i.kind === cKind);
+  if (cKind === 'len10') list = list.filter(i => isLen10(i.title));
+  else if (cKind !== 'all') list = list.filter(i => i.kind === cKind);
   if (cGender !== 'all') list = list.filter(i => i.gender === cGender);
   if (cSize) list = list.filter(i => i.sizes.includes(Number(cSize)));
   const grid = document.getElementById('cheapGrid');
@@ -441,15 +484,15 @@ document.getElementById('cheapKind').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   cKind = b.dataset.k;
   [...document.querySelectorAll('#cheapKind button')].forEach(x => x.classList.toggle('active', x === b));
-  renderCheap();
+  renderBottoms(); renderCheap();
 });
 document.getElementById('cheapGender').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   cGender = b.dataset.g;
   [...document.querySelectorAll('#cheapGender button')].forEach(x => x.classList.toggle('active', x === b));
-  renderCheap();
+  renderBottoms(); renderCheap();
 });
-document.getElementById('cheapSize').addEventListener('change', e => { cSize = e.target.value; renderCheap(); });
+document.getElementById('cheapSize').addEventListener('change', e => { cSize = e.target.value; renderBottoms(); renderCheap(); });
 
 // ============ タブ3: 他ブランド ============
 const proxyImg = u => u && u.startsWith('http') ? '/api/img?u=' + encodeURIComponent(u) : u;
@@ -532,7 +575,7 @@ function injectJsonLd(){
       itemListElement: CDATA.items.slice(0, 10).map((it, i) => ({
         '@type': 'ListItem', position: i + 1,
         item: {
-          '@type': 'Product', name: it.title, image: it.image, url: it.url,
+          '@type': 'Product', name: it.title, image: new URL(nishiImg(it.image), location.origin).href, url: it.url,
           brand: {'@type':'Brand', name: '西松屋'},
           offers: {'@type':'Offer', price: String(it.price), priceCurrency: 'JPY',
                    availability: 'https://schema.org/InStock', url: it.url},
@@ -586,13 +629,14 @@ function injectAnalytics(){
     .catch(e => { document.getElementById('tshirtGrid').innerHTML = `<div class="empty">データ読込エラー: ${esc(e.message)}</div>`; });
   const pCheap = loadJson('cheap.json').then(d => {
     CDATA = d;
-    const sel = document.getElementById('cheapSize');
-    for (const cm of d.availableSizes) {
-      const o = document.createElement('option'); o.value = cm; o.textContent = cm + 'cm';
-      sel.appendChild(o);
-    }
+    refreshSizeOptions();
     renderCheap();
   }).catch(e => { document.getElementById('cheapGrid').innerHTML = `<div class="empty">データ読込エラー: ${esc(e.message)}</div>`; });
+  loadJson('bottoms.json').then(d => {
+    BDATA = d;
+    refreshSizeOptions();
+    renderBottoms();
+  }).catch(e => { document.getElementById('bottomsGrid').innerHTML = `<div class="empty">データ読込エラー: ${esc(e.message)}</div>`; });
   Promise.allSettled([pData, pCheap]).then(injectJsonLd);
   loadJson('uniqlo.json').then(renderUniqlo).catch(() => {});
   loadJson('corners.json').then(renderCorners)

@@ -130,6 +130,9 @@
 const CFG = window.SITE_CONFIG || {affiliate:{}};
 const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const fmtYen = n => '¥' + Number(n).toLocaleString();
+// 西松屋画像は /img/ (R2 read-throughミラー) 経由 — 訪問者のIPを原本サーバーに触れさせない
+const NISHI_IMG = 'https://www.24028-net.jp/client_info/N24028/itemimage/';
+const nishiImg = u => u && u.startsWith(NISHI_IMG) ? '/img/' + u.slice(NISHI_IMG.length) : u;
 const GENDER = {boys:{cls:'b-boys',label:'男の子'},girls:{cls:'b-girls',label:'女の子'},unisex:{cls:'b-unisex',label:'男女兼用'}};
 const BANDS = [
   { front:'BABY',   no:'①', label:'ベビー',   range:'80〜95cm'  },
@@ -212,7 +215,7 @@ function render(design, generatedAt){
     return `<div class="band">
       <div class="band-tag"><span class="band-no">${b.no} ${b.label}</span><span class="band-range">${b.range}</span></div>
       <a class="imglink" href="${esc(d.url)}" target="_blank" rel="noopener" title="西松屋の商品ページへ">
-        <img src="${esc(d.image)}" alt="${esc(design.title)} ${b.label}" loading="lazy" onerror="this.style.visibility='hidden'"></a>
+        <img src="${esc(nishiImg(d.image))}" alt="${esc(design.title)} ${b.label}" loading="lazy" onerror="this.style.visibility='hidden'"></a>
       <div class="band-body">
         在庫サイズ <div class="band-sizes">${d.sizes.map(s=>`<span class="sz">${s}</span>`).join('')}</div>
         ${d.soldOut && d.soldOut.length ? `<div style="margin:-4px 0 8px;color:var(--outink)">売切: ${d.soldOut.join('・')}cm（展開はあり）</div>` : ''}
@@ -299,7 +302,7 @@ function render(design, generatedAt){
   ld.type = 'application/ld+json';
   ld.textContent = JSON.stringify({
     '@context':'https://schema.org','@type':'Product',
-    name: design.title, image: design.image,
+    name: design.title, image: new URL(nishiImg(design.image), location.origin).href,
     brand: {'@type':'Brand', name: design.brand || '西松屋'},
     offers: {'@type':'AggregateOffer', priceCurrency:'JPY',
       lowPrice: String(design.priceMin||''), highPrice: String(design.priceMax||design.priceMin||''),
@@ -312,18 +315,25 @@ function render(design, generatedAt){
   const id = idFromUrl();
   const app = document.getElementById('app');
   try {
-    let data;
-    for (const u of ['/api/data.json', '/data.json']) {
-      try { const r = await fetch(u); if (r.ok) { data = await r.json(); break; } } catch(e){}
+    // Tシャツ(data.json) → お揃いパンツ・レギンス(bottoms.json) の順に品番を探す
+    let design = null, generatedAt = '', loadedAny = false;
+    for (const name of ['data.json', 'bottoms.json']) {
+      let data = null;
+      for (const u of ['/api/' + name, '/' + name]) {
+        try { const r = await fetch(u); if (r.ok) { data = await r.json(); break; } } catch(e){}
+      }
+      if (!data) continue;
+      loadedAny = true;
+      const hit = (data.designs||[]).find(d => d.id === id || (d.products||[]).some(p => p.hinban === id));
+      if (hit) { design = hit; generatedAt = data.generatedAt; break; }
     }
-    if (!data) throw new Error('データを読み込めませんでした');
-    const design = (data.designs||[]).find(d => d.id === id || (d.products||[]).some(p => p.hinban === id));
+    if (!loadedAny) throw new Error('データを読み込めませんでした');
     if (!design) {
       app.innerHTML = `<div class="empty">このアイテムは現在掲載されていません。<br>
         <small>在庫状況により毎朝の更新で入れ替わります。</small><br><br><a href="/">→ 本日の一覧を見る</a></div>`;
       return;
     }
-    render(design, data.generatedAt);
+    render(design, generatedAt);
   } catch (e) {
     app.innerHTML = `<div class="empty">読み込みエラー: ${esc(e.message)}<br><br><a href="/">→ 一覧へ戻る</a></div>`;
   }

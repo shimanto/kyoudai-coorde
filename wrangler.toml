@@ -7,3 +7,9 @@ compatibility_date = "2026-06-01"
 [[kv_namespaces]]
 binding = "COORDE_KV"
 id = "cab4b705a9404b2baddc8844cfe1629c"
+
+# 西松屋商品画像の read-through ミラー (/img/* が使用)。
+# ユーザーのブラウザから 24028-net.jp へ直接画像リクエストを送らせないための永続キャッシュ。
+[[r2_buckets]]
+binding = "COORDE_IMG"
+bucket_name = "nishimatsuya-coorde-img"

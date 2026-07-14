@@ -14,6 +14,7 @@ naviplus_0.json
 
 # 生成データ (npm run build で再生成 / 本番は KV から配信)
 public/data.json
+public/bottoms.json
 public/cheap.json
 public/uniqlo.json
 public/corners.json

@@ -14,6 +14,10 @@ const server = http.createServer((req, res) => {
   if (f === '/' || f === '/cheap' || f === '/brands') f = '/index.html';       // _redirects 相当
   if (f.startsWith('/d/') && !f.endsWith('.json')) f = '/item.html';             // 詳細ページ
   if (f.startsWith('/api/img')) { res.writeHead(404); return res.end(); }       // 画像プロキシは本番のみ
+  if (f.startsWith('/img/')) {                                                  // R2ミラーは本番のみ → 原本へ302
+    res.writeHead(302, { location: 'https://www.24028-net.jp/client_info/N24028/itemimage/' + f.slice(5) });
+    return res.end();
+  }
   if (f.startsWith('/api/')) f = f.slice(4);                                    // /api/x.json → 静的 x.json
   const fp = path.join(ROOT, f);
   if (!fp.startsWith(ROOT) || !fs.existsSync(fp) || fs.statSync(fp).isDirectory()) { res.writeHead(404); return res.end('nf'); }
@@ -43,12 +47,21 @@ const meta = await page.$eval('#tshirtMeta', (e) => e.textContent);
 console.log('Tシャツカード:', cards, '|', meta);
 await page.screenshot({ path: 'preview.png' });
 
-// --- タブ2: ¥1000以下 ---
+// --- タブ2: お揃いパンツ・レギンス + ¥1000以下 ---
 await page.click('#tabs button[data-tab="cheap"]');
 await page.waitForTimeout(400);
+const bottomsCards = await page.$$eval('#bottomsGrid .card', (c) => c.length);
+const bottomsMeta = await page.$eval('#bottomsMeta', (e) => e.textContent);
+console.log('お揃いボトムスカード:', bottomsCards, '|', bottomsMeta);
+const firstBottomTitle = await page.$eval('#bottomsGrid .card .title', (e) => e.textContent);
+console.log('先頭デザイン(10分丈優先):', firstBottomTitle);
 const cheapCards = await page.$$eval('#cheapGrid .c-card', (c) => c.length);
 const cheapMeta = await page.$eval('#cheapMeta', (e) => e.textContent);
 console.log('¥1000以下カード:', cheapCards, '|', cheapMeta);
+await page.click('#cheapKind button[data-k="len10"]');
+await page.waitForTimeout(300);
+console.log('10分丈のみ: お揃い', await page.$$eval('#bottomsGrid .card', (c) => c.length),
+  '/ ¥1000以下', await page.$$eval('#cheapGrid .c-card', (c) => c.length));
 await page.click('#cheapKind button[data-k="spats"]');
 await page.waitForTimeout(300);
 console.log('スパッツのみ:', await page.$$eval('#cheapGrid .c-card', (c) => c.length));
@@ -84,6 +97,15 @@ console.log('詳細ページ タイトル:', await page.$eval('h1', (e) => e.tex
 console.log('詳細ページ 帯カード:', await page.$$eval('.band', (c) => c.length),
   '/ 色ブロック:', await page.$$eval('.color-block', (c) => c.length));
 await page.screenshot({ path: 'preview-detail.png', fullPage: false });
+
+// --- 詳細ページ /d/<id> (お揃いボトムス) ---
+const firstBottomId = JSON.parse(fs.readFileSync('public/bottoms.json', 'utf8')).designs[0].id;
+await page.goto(`http://localhost:${port}/d/${firstBottomId}`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(600);
+console.log('ボトムス詳細 タイトル:', await page.$eval('h1', (e) => e.textContent).catch(() => '(なし)'));
+console.log('ボトムス詳細 帯カード:', await page.$$eval('.band', (c) => c.length),
+  '/ 色ブロック:', await page.$$eval('.color-block', (c) => c.length));
+await page.screenshot({ path: 'preview-detail-bottoms.png', fullPage: false });
 
 // --- 詳細ページ スマホ表示 (390px) ---
 const mp = await browser.newPage({ viewport: { width: 390, height: 844 } });

@@ -3,7 +3,7 @@
 // これはデプロイ時の初期データ生成・ローカル開発・障害時の手動復旧用。
 import fs from 'node:fs';
 import {
-  PATHS, scrapeCategory, buildTshirtData, buildCheapData,
+  PATHS, scrapeCategory, buildTshirtData, buildBottomsData, buildCheapData,
   buildUniqloData, buildCornersData, buildFeedXml,
   fetchSkuMatrix, applySkuMatrices,
 } from '../src/pipeline.mjs';
@@ -39,6 +39,27 @@ try {
   console.log(`  SKUマトリクス適用: ${applied}/${hinbans.length}品番`);
   save('data.json', tshirtData);
 } catch (e) { console.error('✘ data.json:', e.message); process.exitCode = 1; }
+
+// 1.5) お揃いパンツ・レギンス (価格上限なし・10分丈優先)
+try {
+  const pantsAll = await scrapeCategory(f, PATHS.pants, { maxPages: 8 });
+  const legAll = await scrapeCategory(f, PATHS.leggings, { maxPages: 4 });
+  const bottomsData = buildBottomsData(pantsAll, legAll);
+  console.log(`お揃いボトムス: ${pantsAll.products.length + legAll.products.length}品番 → デザイン ${bottomsData.totalDesigns}`);
+
+  const hinbans = [...new Set(bottomsData.designs.flatMap((d) => d.products.map((p) => p.hinban)))];
+  const map = {};
+  let done = 0;
+  for (const h of hinbans) {
+    try { const m = await fetchSkuMatrix(f, h); if (m) map[h] = m; } catch { /* 個別失敗は帯表示にフォールバック */ }
+    done++;
+    if (done % 25 === 0) console.log(`  SKUマトリクス ${done}/${hinbans.length}`);
+    await new Promise((r2) => setTimeout(r2, 80));
+  }
+  const applied = applySkuMatrices(bottomsData, map);
+  console.log(`  SKUマトリクス適用: ${applied}/${hinbans.length}品番 (残デザイン ${bottomsData.totalDesigns})`);
+  save('bottoms.json', bottomsData);
+} catch (e) { console.error('✘ bottoms.json:', e.message); process.exitCode = 1; }
 
 // 2) ¥1000以下 パンツ・スパッツ
 try {

@@ -4,7 +4,7 @@
 // KV に無ければデプロイ同梱の静的ファイル (public/*.json) にフォールバック。
 // /api/img?u=<URL>: 他ブランドコーナー画像のプロキシ (ホットリンク拒否対策)。
 
-const JSON_KEYS = new Set(['data.json', 'cheap.json', 'uniqlo.json', 'corners.json', 'status.json']);
+const JSON_KEYS = new Set(['data.json', 'bottoms.json', 'cheap.json', 'uniqlo.json', 'corners.json', 'status.json']);
 const FEED_KEYS = new Set(['feed.xml']);
 
 // 画像プロキシで許可するホスト (それ以外は拒否 — オープンプロキシ化防止)

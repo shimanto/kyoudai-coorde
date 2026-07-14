@@ -21,7 +21,7 @@
 // ▼ 初回のみ: デプロイ後に POST /init?token=<ADMIN_TOKEN> で Alarm を起動すること。
 
 import {
-  PATHS, scrapeCategory, buildTshirtData, buildCheapData,
+  PATHS, scrapeCategory, buildTshirtData, buildBottomsData, buildCheapData,
   buildUniqloData, buildCornersData, buildFeedXml,
   fetchSkuMatrix, applySkuMatrices,
 } from '../src/pipeline.mjs';
@@ -31,6 +31,45 @@ const RUN_HOUR_UTC = 23;              // 23:00 UTC = 8:00 JST
 const CONTINUE_DELAY_MS = 90 * 1000;  // 未完了時の継続 Alarm 間隔
 const MAX_ATTEMPTS = 2;               // ステップ再試行回数 (超えたらスキップ)
 const FETCH_TIMEOUT_MS = 15000;
+
+// 色×サイズのSKU在庫 (詳細ページ用)。品番ごとに1リクエストなので
+// 進捗を KV に保存しながら複数 tick に分けて実行する (BudgetExceeded で中断→再開)。
+// data.json (Tシャツ) / bottoms.json (パンツ・レギンス) で共用。
+function skuStep(name, dataKey, tmpKey) {
+  return {
+    name, est: 15,
+    run: async (f, env) => {
+      const raw = await env.COORDE_KV.get(dataKey);
+      if (!raw) throw new Error(`${dataKey} がまだ無いため ${name} をスキップ`);
+      const data = JSON.parse(raw);
+      const hinbans = [...new Set((data.designs || []).flatMap((d) => (d.products || []).map((p) => p.hinban)))];
+      let prog = null;
+      try { prog = JSON.parse(await env.COORDE_KV.get(tmpKey) || 'null'); } catch { /* 壊れていたら最初から */ }
+      if (!prog || prog.runDate !== data.generatedAt) prog = { runDate: data.generatedAt, i: 0, map: {} };
+      try {
+        while (prog.i < hinbans.length) {
+          const h = hinbans[prog.i];
+          try {
+            const m = await fetchSkuMatrix(f, h);
+            if (m) prog.map[h] = m;
+          } catch (e) {
+            if (e && e.budget) throw e; // 予算切れは上へ (進捗は catch 側で保存)
+            // 個別失敗はスキップ (この品番だけ帯単位表示にフォールバック)
+          }
+          prog.i++;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      } catch (e) {
+        if (e && e.budget) { await env.COORDE_KV.put(tmpKey, JSON.stringify(prog)); }
+        throw e;
+      }
+      const applied = applySkuMatrices(data, prog.map);
+      await env.COORDE_KV.put(dataKey, JSON.stringify(data));
+      await env.COORDE_KV.delete(tmpKey);
+      return `sku matrix ${applied}/${hinbans.length}品番`;
+    },
+  };
+}
 
 // 各ステップ: est = 見積もり fetch 数 (ページ上限cap込み)。
 const STEPS = [
@@ -43,41 +82,19 @@ const STEPS = [
       return `designs=${data.totalDesigns}`;
     },
   },
+  skuStep('skumatrix', 'data.json', 'tmp:sku'),
   {
-    // 色×サイズのSKU在庫 (詳細ページ用)。品番ごとに1リクエスト(約115件)なので
-    // 進捗を KV に保存しながら複数 tick に分けて実行する (BudgetExceeded で中断→再開)。
-    name: 'skumatrix', est: 15,
+    // お揃いパンツ・レギンス (価格上限なし・2カテゴリ統合)
+    name: 'bottoms', est: 9,
     run: async (f, env) => {
-      const raw = await env.COORDE_KV.get('data.json');
-      if (!raw) throw new Error('data.json がまだ無いため skumatrix をスキップ');
-      const data = JSON.parse(raw);
-      const hinbans = [...new Set((data.designs || []).flatMap((d) => (d.products || []).map((p) => p.hinban)))];
-      let prog = null;
-      try { prog = JSON.parse(await env.COORDE_KV.get('tmp:sku') || 'null'); } catch { /* 壊れていたら最初から */ }
-      if (!prog || prog.runDate !== data.generatedAt) prog = { runDate: data.generatedAt, i: 0, map: {} };
-      try {
-        while (prog.i < hinbans.length) {
-          const h = hinbans[prog.i];
-          try {
-            const m = await fetchSkuMatrix(f, h);
-            if (m) prog.map[h] = m;
-          } catch (e) {
-            if (e && e.budget) throw e; // 予算切れは上へ (進捗は finally 側で保存)
-            // 個別失敗はスキップ (この品番だけ帯単位表示にフォールバック)
-          }
-          prog.i++;
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      } catch (e) {
-        if (e && e.budget) { await env.COORDE_KV.put('tmp:sku', JSON.stringify(prog)); }
-        throw e;
-      }
-      const applied = applySkuMatrices(data, prog.map);
-      await env.COORDE_KV.put('data.json', JSON.stringify(data));
-      await env.COORDE_KV.delete('tmp:sku');
-      return `sku matrix ${applied}/${hinbans.length}品番`;
+      const pants = await scrapeCategory(f, PATHS.pants, { delayMs: 150, maxPages: 8 });
+      const leggings = await scrapeCategory(f, PATHS.leggings, { delayMs: 150, maxPages: 4 });
+      const data = buildBottomsData(pants, leggings);
+      await env.COORDE_KV.put('bottoms.json', JSON.stringify(data));
+      return `designs=${data.totalDesigns}`;
     },
   },
+  skuStep('sku-bottoms', 'bottoms.json', 'tmp:skub'),
   {
     name: 'cheap', est: 13,
     run: async (f, env) => {
